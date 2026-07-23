@@ -470,7 +470,7 @@ class NimcodeREPL:
                     console.print(f"Python: {sys.version.split()[0]}")
                     console.print(f"CWD: {os.getcwd()}")
                     console.print(f"Model: {self.model}")
-                    console.print(f"MCP Servers: {len(self.agent.settings.get("mcp_servers", {}))}")
+                    console.print(f"MCP Servers: {len(self.agent.settings.get('mcp_servers', {}))}")
                     console.print(f"Permissions: {self.permission_engine.mode.value}")
                     self.messages.append({"role": "user", "content": "I just ran the /doctor command to diagnose the environment. Please use the Bash tool to verify the presence of git, docker, node, and python packages, and report back on my project's health."})
                     user_input = "Analyze environment."
