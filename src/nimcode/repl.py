@@ -115,7 +115,14 @@ class NimcodeREPL:
         table.add_column("Left", justify="center", ratio=1)
         table.add_column("Right", ratio=2)
         
-        alien = "[orange3]  ▀▄   ▄▀  [/orange3]\n[orange3] ▄█▀███▀█▄ [/orange3]\n[orange3]█▀███████▀█[/orange3]\n[orange3]█ █▀▀▀▀▀█ █[/orange3]\n[orange3]   ▀▀   ▀▀ [/orange3]"
+        logo = (
+            "[bold green]   ███╗   ██╗   [/bold green]\n"
+            "[bold green]   ████╗  ██║   [/bold green]\n"
+            "[bold green]   ██╔██╗ ██║   [/bold green]\n"
+            "[bold green]   ██║╚██╗██║   [/bold green]\n"
+            "[bold green]   ██║ ╚████║   [/bold green]\n"
+            "[bold green]   ╚═╝  ╚═══╝   [/bold green]"
+        )
         
         import os
         import subprocess
@@ -156,7 +163,7 @@ class NimcodeREPL:
         except Exception:
             coverage_info = ""
             
-        left_content = f"\n[bold white]Welcome back![/bold white]\n\n{alien}\n\n[dim]{self.model}[/dim]\n[dim]{cwd_short}{branch_info}[/dim]{disk_info}{coverage_info}"
+        left_content = f"\n[bold white]Welcome back![/bold white]\n\n{logo}\n\n[dim]{self.model}[/dim]\n[dim]{cwd_short}{branch_info}[/dim]{disk_info}{coverage_info}"
         
         # Play a subtle startup sound if on Windows
         try:
