@@ -1,47 +1,68 @@
-# NimCode
+<div align="center">
+  
+# 🚀 NimCode
 
-NimCode is an autonomous AI coding assistant powered by NVIDIA NIM APIs (LLaMa 3.1 70B, etc.). It works similarly to Claude Code, providing a standalone REPL, a powerful command-line interface, and smart code modification capabilities.
+**The Autonomous AI Coding Assistant for the NVIDIA NIM Ecosystem**
 
-## Installation
+[![PyPI version](https://badge.fury.io/py/nimcode.svg)](https://badge.fury.io/py/nimcode)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-You can install NimCode globally on your system using pip:
+*A powerful, standalone REPL and CLI agent that writes, edits, and plans code like a senior developer—powered by LLaMa 3.1 70B and the lightning-fast NVIDIA NIM API.*
 
-```bash
-pip install .
-```
+</div>
 
-After installation, the `nimcode` command will be available anywhere in your terminal.
+---
 
-## Setup
+## 🌟 Features
 
-First, you need to configure your NVIDIA NIM API key:
+- 🧠 **Smart Planning (`/plan`)**: Generates comprehensive, step-by-step architectural plans directly into `.nimcode/plans/`.
+- 🛠️ **Autonomous Execution (`/code`)**: Reads, writes, and tests code across your entire workspace.
+- 📸 **Vision Support (`/vision`)**: Analyze screenshots to debug UI issues or write code from design mockups.
+- 🎙️ **Voice Commands (`/voice`)**: Speak your requirements and let the agent do the typing.
+- 💾 **Continuous Learning**: Saves custom rules and instructions to `.nimcode/skills/` so it gets smarter over time.
+- 🤖 **Auto-Commits (`/commit`)**: Automatically writes descriptive, conventional git commits for your changes.
 
-```bash
-nimcode login
-```
+## 📦 Installation
 
-Alternatively, set the `NIM_API_KEY` environment variable.
-
-## Usage
-
-You can start the interactive REPL by simply running:
-
-```bash
-nimcode
-```
-
-Or you can pass a direct task for one-off executions:
+NimCode is available globally via PyPI. You can install it anywhere in seconds:
 
 ```bash
-nimcode "Create a react application in the current directory"
-nimcode /plan "Build a snake game in Python"
+pip install nimcode
 ```
 
-## Features
+## 🚀 Quick Start
 
-- **Plan Mode**: Run `/plan` to enter planning mode. The agent will read your codebase and generate a comprehensive markdown plan in `.nimcode/plans/`.
-- **Skills/Memories**: NimCode learns over time and saves learned skills into `.nimcode/skills/` for future context.
-- **Multimodal Vision**: Use `/vision` to analyze screenshots.
-- **Voice Input**: Use `/voice` to speak to NimCode.
-- **Auto-Commits**: Use `/commit` to auto-generate git commits.
-- **Diagnostic Tool**: Run `nimcode doctor` to check your environment setup.
+1. **Get an API Key**: Grab a free NVIDIA API key from [build.nvidia.com](https://build.nvidia.com/).
+2. **Login**: Connect your local environment by running:
+   ```bash
+   nimcode login
+   ```
+3. **Start Coding**: 
+   - Launch the interactive REPL:
+     ```bash
+     nimcode
+     ```
+   - Or run a one-off task directly from the command line:
+     ```bash
+     nimcode /plan "Build a classic Snake game using HTML5 Canvas"
+     ```
+
+## ⚙️ How it Works
+
+NimCode creates a `.nimcode` directory inside your projects. This directory acts as the "brain" for that specific workspace:
+- `.nimcode/plans/`: All your generated step-by-step markdown plans live here.
+- `.nimcode/skills/`: Any custom guidelines, framework rules, or memories you teach the agent.
+
+## 🛡️ Requirements
+
+- Python 3.8+
+- An NVIDIA NIM API Key (NIM_API_KEY)
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check out our [issues page](#).
+
+---
+<div align="center">
+<i>Built with ❤️ for the open-source developer community.</i>
+</div>
