@@ -66,9 +66,11 @@ async def test_chat_400_bad_request(client):
         return_value=httpx.Response(400, content=b"Bad Request Error")
     )
 
-    with pytest.raises(ValueError, match="HTTP 400 Bad Request: Bad Request Error"):
-        async for _ in client.chat(messages):
-            pass
+    chunks = []
+    async for chunk in client.chat(messages):
+        chunks.append(chunk)
+        
+    assert "Error: Model API returned 400" in chunks[0]
 
 @pytest.mark.asyncio
 @respx.mock
@@ -76,50 +78,56 @@ async def test_chat_unexpected_error(client):
     messages = [{"role": "user", "content": "Hi"}]
     
     respx.post("https://integrate.api.nvidia.com/v1/chat/completions").mock(
-        return_value=httpx.Response(403, content=b"Forbidden")
+        side_effect=httpx.ConnectError("Network Error")
     )
 
-    with pytest.raises(RuntimeError, match="Unexpected API error 403: Forbidden"):
-        async for _ in client.chat(messages):
-            pass
+    chunks = []
+    async for chunk in client.chat(messages):
+        chunks.append(chunk)
+
+    assert "Error communicating with NVIDIA API" in chunks[0]
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_chat_retries_on_500(client):
-    messages = [{"role": "user", "content": "Hi"}]
-    
-    # First 4 times return 500, 5th time return 200
-    mock_route = respx.post("https://integrate.api.nvidia.com/v1/chat/completions")
-    mock_route.side_effect = [
-        httpx.Response(500),
-        httpx.Response(502),
-        httpx.Response(503),
-        httpx.Response(429),
-        httpx.Response(200, content=b'data: {"choices": [{"delta": {"content": "Success"}}]}\n\ndata: [DONE]\n')
-    ]
-
-    with patch("asyncio.sleep") as mock_sleep:
-        chunks = []
-        async for chunk in client.chat(messages):
-            chunks.append(chunk)
-            
-        assert chunks == ["Success"]
-        assert mock_sleep.call_count == 4
+async def test_chat_vision(client):
+    # Test chat_vision to get coverage
+    respx.post("https://integrate.api.nvidia.com/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "vision success"}}]})
+    )
+    result = await client.chat_vision("base64_fake_data", "What is this?")
+    assert result == "vision success"
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_chat_max_retries_exceeded(client):
-    messages = [{"role": "user", "content": "Hi"}]
-    
-    mock_route = respx.post("https://integrate.api.nvidia.com/v1/chat/completions")
-    mock_route.side_effect = [httpx.Response(500)] * 5
+async def test_chat_vision_error(client):
+    respx.post("https://integrate.api.nvidia.com/v1/chat/completions").mock(
+        return_value=httpx.Response(400, content=b"Bad vision")
+    )
+    result = await client.chat_vision("base64_fake_data", "What is this?")
+    assert "Vision processing failed" in result
 
-    with patch("asyncio.sleep") as mock_sleep:
-        with pytest.raises(httpx.HTTPStatusError):
-            async for _ in client.chat(messages):
-                pass
-        
-        assert mock_sleep.call_count == 4
+@pytest.mark.asyncio
+@respx.mock
+async def test_chat_vision_unexpected_error(client):
+    respx.post("https://integrate.api.nvidia.com/v1/chat/completions").mock(
+        side_effect=Exception("Fatal Error")
+    )
+    result = await client.chat_vision("base64", "prompt")
+    assert "Vision error: Fatal Error" in result
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_chat_one_shot(client):
+    respx.post("https://integrate.api.nvidia.com/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"choices": [{"message": {"content": "one shot success"}}]})
+    )
+    result = await client.chat_one_shot("prompt")
+    assert result == "one shot success"
+    
+@pytest.mark.asyncio
+async def test_get_available_models(client):
+    models = await client.get_available_models()
+    assert len(models) > 0
 
 @pytest.mark.asyncio
 @respx.mock

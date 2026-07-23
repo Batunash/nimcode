@@ -2,7 +2,7 @@ import pytest
 import os
 import json
 from unittest.mock import patch, mock_open
-from nimcode.config import load_settings
+from nimcode.config import load_settings, save_global_setting
 
 def test_load_settings_default():
     with patch("os.path.exists", return_value=False):
@@ -17,6 +17,41 @@ def test_load_settings_global_only():
             settings = load_settings()
             # If the patch doesn't match perfectly on windows, it's fine, we just want to execute the path
             pass
+
+def test_load_settings_local_error(tmp_path):
+    global_dir = tmp_path / ".nimcode"
+    global_dir.mkdir()
+    (global_dir / "settings.json").write_text('{"theme": "dark"}')
+
+    local_file = tmp_path / "nimcode.json"
+    local_file.write_text('{invalid_json')
+
+    with patch("os.path.expanduser", return_value=str(global_dir)), \
+         patch("os.getcwd", return_value=str(tmp_path)):
+        settings = load_settings()
+        assert settings["theme"] == "dark"
+
+def test_save_global_setting(tmp_path):
+    global_dir = tmp_path / ".nimcode"
+    with patch("os.path.expanduser", return_value=str(global_dir)):
+        # Test saving to new file
+        save_global_setting("theme", "light")
+        settings_file = global_dir / "settings.json"
+        assert settings_file.exists()
+        import json
+        assert json.loads(settings_file.read_text())["theme"] == "light"
+        
+        # Test saving to existing file
+        save_global_setting("mcp_servers", {"sqlite": {}})
+        settings = json.loads(settings_file.read_text())
+        assert settings["theme"] == "light"
+        assert "sqlite" in settings["mcp_servers"]
+        
+        # Test error handling when file exists but invalid JSON
+        settings_file.write_text("{invalid")
+        save_global_setting("new_key", "value")
+        settings = json.loads(settings_file.read_text())
+        assert settings["new_key"] == "value"
 
 def test_load_settings_local_overrides_global():
     mock_local = '{"model": "local_model"}'

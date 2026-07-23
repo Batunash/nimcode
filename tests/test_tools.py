@@ -181,3 +181,138 @@ def test_grep_read_error(tmp_path):
     with patch("builtins.open", side_effect=PermissionError("No access")):
         res = ToolRegistry.execute({"tool": "Grep", "args": {"query": "FindMe", "directory": "sub3"}}, cwd)
         assert "No matches found" in res
+
+
+
+def test_execute_ast_replace(tmp_path):
+    cwd = str(tmp_path)
+    file_path = os.path.join(cwd, "test.py")
+    with open(file_path, "w") as f:
+        f.write("def foo():\n    pass\n")
+    
+    from nimcode.tools import ToolRegistry
+    res = ToolRegistry.execute({
+        "tool": "ASTReplace",
+        "args": {"file_path": "test.py", "target_name": "foo", "new_code": "def foo():\n    return 1"}
+    }, cwd)
+    assert "Successfully" in res
+    with open(file_path, "r") as f:
+        assert "return 1" in f.read()
+
+def test_execute_ast_replace_not_found(tmp_path):
+    cwd = str(tmp_path)
+    file_path = os.path.join(cwd, "test.py")
+    with open(file_path, "w") as f:
+        f.write("def bar():\n    pass\n")
+    
+    from nimcode.tools import ToolRegistry
+    res = ToolRegistry.execute({
+        "tool": "ASTReplace",
+        "args": {"file_path": "test.py", "target_name": "foo", "new_code": "def foo():\n    return 1"}
+    }, cwd)
+    assert "not found" in res
+
+def test_execute_start_terminal():
+    from unittest.mock import patch, MagicMock
+    from nimcode.tools import ToolRegistry
+    with patch("subprocess.Popen") as mock_popen:
+        mock_proc = MagicMock()
+        mock_proc.stdout.readline.return_value = ''
+        mock_popen.return_value = mock_proc
+        res = ToolRegistry.execute({"tool": "StartTerminal", "args": {"command": "cmd", "term_id": "t1"}})
+        assert "Started terminal 't1'" in res
+
+def test_execute_terminal_input():
+    from unittest.mock import MagicMock
+    from nimcode.tools import ToolRegistry
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+    mock_queue = MagicMock()
+    mock_queue.empty.side_effect = [False, True]
+    mock_queue.get_nowait.return_value = "hello"
+    ToolRegistry._ACTIVE_TERMINALS["t1"] = {"proc": mock_proc, "queue": mock_queue}
+    res = ToolRegistry.execute({"tool": "TerminalInput", "args": {"term_id": "t1", "text": "ls"}})
+    assert "Input sent. Output:" in res
+    
+    # Test unknown terminal
+    res2 = ToolRegistry.execute({"tool": "TerminalInput", "args": {"term_id": "t2", "text": "ls"}})
+    assert "not found" in res2
+
+def test_execute_browse_web():
+    from unittest.mock import patch, MagicMock, AsyncMock
+    from nimcode.tools import ToolRegistry
+    import sys
+    
+    pw_mock = MagicMock()
+    pw_sync_mock = MagicMock()
+    
+    class FakeBrowser:
+        def new_page(self):
+            page = MagicMock()
+            page.screenshot.return_value = b"fake_image"
+            page.evaluate.return_value = "Fake Text"
+            return page
+        def close(self): pass
+            
+    class FakePlaywrightContextManager:
+        def __enter__(self):
+            p = MagicMock()
+            p.chromium.launch.return_value = FakeBrowser()
+            return p
+        def __exit__(self, *args): pass
+        
+    pw_sync_mock.sync_playwright.return_value = FakePlaywrightContextManager()
+    sys.modules['playwright'] = pw_mock
+    sys.modules['playwright.sync_api'] = pw_sync_mock
+    
+    with patch("nimcode.nim_client.NimClient.chat_vision", new_callable=AsyncMock) as mock_chat:
+        mock_chat.return_value = "Fake Vision Result"
+        with patch("os.environ.get", return_value="fake_key"):
+            res = ToolRegistry.execute({"tool": "BrowseWeb", "args": {"url": "http://example.com", "goal": "Extract text"}})
+            assert "Visual Analysis" in res
+
+def test_execute_read_architecture(tmp_path):
+    cwd = str(tmp_path)
+    from nimcode.tools import ToolRegistry
+    res = ToolRegistry.execute({"tool": "ReadArchitecture", "args": {"directory": "."}}, cwd)
+    assert isinstance(res, str)
+
+def test_execute_symbol_search(tmp_path):
+    cwd = str(tmp_path)
+    file_path = os.path.join(cwd, "test.py")
+    with open(file_path, "w") as f:
+        f.write("def search_me():\n    pass\n")
+    from nimcode.tools import ToolRegistry
+    res = ToolRegistry.execute({"tool": "SymbolSearch", "args": {"symbol_name": "search_me", "directory": "."}}, cwd)
+    assert "search_me" in res
+    
+    res2 = ToolRegistry.execute({"tool": "SymbolSearch", "args": {"symbol_name": "not_found", "directory": "."}}, cwd)
+    assert "No definition found" in res2
+
+def test_execute_semantic_search():
+    from nimcode.tools import ToolRegistry
+    ToolRegistry._FTS_DB = None
+    res = ToolRegistry.execute({"tool": "SemanticSearch", "args": {"query": "hello"}})
+    assert "not indexed" in res
+
+def test_execute_ask_question():
+    from unittest.mock import patch
+    import sys
+    from nimcode.tools import ToolRegistry
+    
+    # Interactive with options
+    with patch("sys.stdin.isatty", return_value=True):
+        with patch("rich.prompt.Prompt.ask", return_value="1"):
+            res = ToolRegistry.execute({"tool": "AskQuestion", "args": {"question": "Q?", "options": ["A", "B"]}})
+            assert "A" in res
+            
+    # Interactive no options
+    with patch("sys.stdin.isatty", return_value=True):
+        with patch("rich.prompt.Prompt.ask", return_value="My answer"):
+            res = ToolRegistry.execute({"tool": "AskQuestion", "args": {"question": "Q?"}})
+            assert "My answer" in res
+            
+    # Non-interactive
+    with patch("sys.stdin.isatty", return_value=False):
+        res = ToolRegistry.execute({"tool": "AskQuestion", "args": {"question": "Q?"}})
+        assert "non-interactive" in res

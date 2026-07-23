@@ -7,6 +7,14 @@ def test_extract_tool_calls_clean():
     assert len(calls) == 1
     assert calls[0] == "{\"tool\": \"Read\", \"args\": {}}"
 
+def test_repair_truncated_json():
+    # Test unclosed quote
+    assert LenientParser.repair_json('{"key": "value') == '{"key": "value"}'
+    # Test unclosed brace
+    assert LenientParser.repair_json('{"key": "value"') == '{"key": "value"}'
+    # Test unclosed bracket and brace
+    assert LenientParser.repair_json('{"arr": ["item"') == '{"arr": ["item"]}'
+
 def test_extract_tool_calls_unclosed():
     text = "Here is my tool call:\n<tool_call>\n{\"tool\": \"Read\"}"
     calls = LenientParser.extract_tool_calls(text)

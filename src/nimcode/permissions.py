@@ -45,18 +45,64 @@ class PermissionEngine:
         while True:
             content = ""
             if tool_name == "Bash":
-                content = f"[bold]Command:[/bold]\n{args.get('command')}"
+                content = f"Command:\n{args.get('command')}"
             elif tool_name == "Write":
-                content = f"[bold]File:[/bold] {args.get('file_path')}\n[bold]Action:[/bold] Overwrite with new content"
-            elif tool_name == "Edit":
-                content = f"[bold]File:[/bold] {args.get('file_path')}\n[bold]Replacing:[/bold] '{args.get('old_string')}' -> '{args.get('new_string')}'"
-            else:
-                content = f"[bold]Args:[/bold] {json.dumps(args, indent=2)}"
+                content_lines = len(args.get('content', '').split('\n'))
+                content = f"File: [bold cyan]{args.get('file_path')}[/bold cyan]\nAction: Overwrite with [bold green]{content_lines} new lines[/bold green]"
+            elif tool_name in ["Edit", "ASTReplace"]:
+                import difflib
+                import os
+                file_path = args.get('file_path', '')
                 
-            panel = Panel(content, title=f"NimCode Wants to Run: {tool_name}", border_style="yellow")
+                # Default to basic diff summary
+                diff_str = ""
+                
+                if tool_name == "Edit":
+                    old_str = args.get('old_string', '')
+                    new_str = args.get('new_string', '')
+                    diff = list(difflib.unified_diff(old_str.splitlines(keepends=True), new_str.splitlines(keepends=True), fromfile=file_path, tofile=file_path))
+                    diff_str = "".join(diff)
+                elif tool_name == "ASTReplace":
+                    new_code = args.get('code', '')
+                    target = args.get('target', '')
+                    try:
+                        if os.path.exists(file_path):
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                source = f.read()
+                            # We can't perfectly predict ASTReplace diff without parsing, so we just show the replacement
+                            diff_str = f"--- ASTReplace target: {target}\n+++ Replacement code:\n{new_code}"
+                    except:
+                        pass
+                
+                # Format diff with rich
+                from rich.text import Text
+                diff_text = Text()
+                for line in diff_str.splitlines():
+                    if line.startswith("+"):
+                        diff_text.append(line + "\n", style="green")
+                    elif line.startswith("-"):
+                        diff_text.append(line + "\n", style="red")
+                    elif line.startswith("@"):
+                        diff_text.append(line + "\n", style="cyan")
+                    else:
+                        diff_text.append(line + "\n")
+                        
+                content = f"File: [bold cyan]{args.get('file_path')}[/bold cyan]\n"
+                console.print(Panel(diff_text, title=f"Diff Preview: {tool_name}"))
+            else:
+                content = f"Args: {{\n"
+                for k, v in args.items():
+                    content += f"  \"{k}\": \"{v}\"\n"
+                content += "}"
+                
+            from rich.box import ROUNDED
+            panel = Panel(content, title=f"NimCode Wants to Run: {tool_name}", border_style="bright_blue", box=ROUNDED, padding=(0, 1))
             console.print(panel)
             
-            choice = Prompt.ask("[bold cyan]Action[/bold cyan] [green](a)ccept[/green] / [red](r)eject[/red] / [blue](e)dit[/blue]", choices=["a", "r", "e"], default="a", show_choices=False)
+            # Using prompt toolkit or simple input to avoid rich coloring for exactly matching the trace
+            choice = input("Action (a)ccept / (r)eject / (e)dit (a): ").strip().lower()
+            if not choice:
+                choice = "a"
             
             if choice == "a":
                 return True

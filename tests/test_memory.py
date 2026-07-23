@@ -15,6 +15,12 @@ def test_count_messages_tokens():
     # 4 chars -> 2 tokens, 8 chars -> 3 tokens => 5 total
     assert MemoryManager.count_messages_tokens(messages) == 5
 
+
+def test_compact_context_empty():
+    manager = MemoryManager(max_tokens=-1)
+    # This should trigger `if not messages: return messages` inside compact_context
+    assert manager.compact_context([]) == []
+
 def test_compact_context_no_change():
     manager = MemoryManager(max_tokens=100)
     messages = [

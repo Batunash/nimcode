@@ -93,8 +93,6 @@ def main():
             console.print("[bold red]API Key is required to use NimCode. Exiting.[/bold red]")
             sys.exit(1)
         
-    console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
-    
     agent = Agent(
         api_key=final_key,
         model=args.model,
@@ -111,17 +109,22 @@ def main():
         piped_input = sys.stdin.read().strip()
         
     if piped_input:
+        console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
         prompt = f"{piped_input}\n\n{args.prompt or ''}".strip()
         console.print(f"Task (with piped input): {prompt}")
         asyncio.run(agent.run(prompt))
     elif args.prompt:
+        console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
         console.print(f"Task: {args.prompt}")
         asyncio.run(agent.run(args.prompt))
     else:
-        console.print("[bold yellow]Entering Interactive REPL Mode[/bold yellow]. Type /exit to quit, /plan for planning mode, /code for coding mode.")
-        asyncio.run(agent.start_repl())
+        from .repl import NimcodeREPL
+        repl = NimcodeREPL(agent)
+        asyncio.run(repl.start_repl())
     
-    console.print("[bold green]Done![/bold green]")
+    # We don't print "Done!" for REPL to keep it clean on exit
+    if args.prompt or piped_input:
+        console.print("[bold green]Done![/bold green]")
 
 if __name__ == "__main__":
     main()

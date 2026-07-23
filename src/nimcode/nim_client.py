@@ -105,8 +105,12 @@ class NimClient:
                             except json.JSONDecodeError:
                                 pass
             except httpx.HTTPStatusError as e:
-                await e.response.aread()
-                logger.error(f"API HTTP error: {e.response.status_code} - {e.response.text}")
+                try:
+                    await e.response.aread()
+                    text = e.response.text
+                except Exception:
+                    text = "<unread stream>"
+                logger.error(f"API HTTP error: {e.response.status_code} - {text}")
                 yield f"\\n\\n[Error: Model API returned {e.response.status_code}. Please check your NVIDIA API key.]"
             except Exception as e:
                 logger.error(f"API connection error: {e}")

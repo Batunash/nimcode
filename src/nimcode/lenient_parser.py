@@ -40,21 +40,27 @@ class LenientParser:
         repaired = re.sub(r",\s*]", "]", repaired)
         
         # 2. Fix unescaped newlines within strings.
-        # A simple approach: we find things that look like string literals and escape newlines.
-        # We'll use a state machine or regex for simple cases. 
-        # For a robust approach without a full parser, we replace literal newlines that are inside quotes.
-        # Actually, python's json.loads is quite strict about unescaped newlines.
         def escape_newlines_in_strings(match):
             return match.group(0).replace("\n", "\\n")
             
-        # Match string literals: " followed by anything except unescaped quote, followed by "
-        # We need to be careful with escaped quotes inside the string.
         string_regex = re.compile(r'"(?:[^"\\]|\\.)*"', re.DOTALL)
         repaired = string_regex.sub(escape_newlines_in_strings, repaired)
         
-        # 3. Very rudimentary single quote to double quote conversion for keys/values
-        # (Only if it fails standard parsing, but we can do it proactively for top-level if needed).
-        # We will try standard json.loads first, and if it fails, maybe do more aggressive repair.
+        # 3. Handle truncated JSON outputs (e.g. model stream cut off)
+        # If it seems like an unclosed string, close it.
+        open_quotes = len(re.findall(r'(?<!\\)"', repaired))
+        if open_quotes % 2 != 0:
+            repaired += '"'
+            
+        # Count open brackets and braces to auto-close them
+        open_braces = repaired.count("{") - repaired.count("}")
+        open_brackets = repaired.count("[") - repaired.count("]")
+        
+        if open_brackets > 0:
+            repaired += "]" * open_brackets
+        if open_braces > 0:
+            repaired += "}" * open_braces
+            
         return repaired
 
     @classmethod
