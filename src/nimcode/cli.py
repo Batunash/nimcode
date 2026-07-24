@@ -116,10 +116,29 @@ def main():
         # Load from history if possible
         agent.load_history()
 
+    async def safe_start_repl(repl):
+        loop = asyncio.get_running_loop()
+        def custom_exception_handler(loop, context):
+            msg = context.get("message", "")
+            exception = context.get("exception", None)
+            if "unhandled errors in a TaskGroup" in str(msg) or "unhandled errors in a TaskGroup" in str(exception):
+                return
+            if exception and isinstance(exception, RuntimeError) and "exit cancel scope in a different task" in str(exception):
+                return
+            if "asynchronous generator" in str(msg):
+                return
+            loop.default_exception_handler(context)
+        loop.set_exception_handler(custom_exception_handler)
+        
+        try:
+            await repl.start_repl()
+        except asyncio.CancelledError:
+            pass
+
     piped_input = None
     if not sys.stdin.isatty():
         piped_input = sys.stdin.read().strip()
-        
+
     if piped_input:
         console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
         prompt = f"{piped_input}\n\n{args.prompt or ''}".strip()
@@ -132,7 +151,7 @@ def main():
     else:
         from .repl import NimcodeREPL
         repl = NimcodeREPL(agent)
-        asyncio.run(repl.start_repl())
+        asyncio.run(safe_start_repl(repl))
     
     # We don't print "Done!" for REPL to keep it clean on exit
     if args.prompt or piped_input:
