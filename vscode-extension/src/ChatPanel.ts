@@ -9,7 +9,6 @@ export class ChatPanel {
     private _disposables: vscode.Disposable[] = [];
     private nimcodeProcess: ChildProcess | null = null;
     
-    // Pass sessionID to potentially load history later
     public sessionId: string;
 
     private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, sessionId: string) {
@@ -18,7 +17,6 @@ export class ChatPanel {
         this.sessionId = sessionId;
 
         this._panel.webview.html = this._getHtmlForWebview();
-
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
         this._panel.webview.onDidReceiveMessage(
@@ -56,20 +54,6 @@ export class ChatPanel {
                         }
                         break;
                     }
-                    case 'set_mode': {
-                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-                            const payload = JSON.stringify({ type: 'set_mode', mode: data.mode });
-                            this.nimcodeProcess.stdin.write(payload + '\n');
-                        }
-                        break;
-                    }
-                    case 'set_model': {
-                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-                            const payload = JSON.stringify({ type: 'set_model', model: data.model });
-                            this.nimcodeProcess.stdin.write(payload + '\n');
-                        }
-                        break;
-                    }
                 }
             },
             null,
@@ -82,7 +66,6 @@ export class ChatPanel {
     public static render(extensionUri: vscode.Uri, sessionId: string = "default") {
         if (ChatPanel.currentPanel) {
             if (ChatPanel.currentPanel.sessionId !== sessionId) {
-                // If switching sessions, maybe reload? For now just reveal
                 ChatPanel.currentPanel.sessionId = sessionId;
                 ChatPanel.currentPanel.restartServer();
             }
@@ -103,7 +86,6 @@ export class ChatPanel {
     }
     
     public restartServer() {
-        // Stop current server and restart (useful if session changed)
         this.startNimcodeServer();
         this._panel.webview.postMessage({ type: 'clear_ui' });
     }
@@ -120,10 +102,26 @@ export class ChatPanel {
         }
 
         try {
-            this.nimcodeProcess = spawn('nimcode', ['--stdio'], { cwd: workspaceRoot });
+            // Using shell: true is critical on Windows to resolve aliases like .cmd or .exe
+            this.nimcodeProcess = spawn('nimcode', ['--stdio'], { cwd: workspaceRoot, shell: true });
         } catch (e) {
-            this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot });
+            this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot, shell: true });
         }
+        
+        this.nimcodeProcess.on('error', (err) => {
+             try {
+                 this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot, shell: true });
+                 this.attachProcessListeners();
+             } catch (e) {
+                 vscode.window.showErrorMessage('Failed to start NimCode backend. Ensure python is installed and nimcode is in your PATH.');
+             }
+        });
+        
+        this.attachProcessListeners();
+    }
+    
+    private attachProcessListeners() {
+        if (!this.nimcodeProcess) return;
         
         if (this.nimcodeProcess.stdout) {
             this.nimcodeProcess.stdout.on('data', (data) => {
@@ -137,6 +135,12 @@ export class ChatPanel {
                         // Ignore non-JSON output (maybe debug prints)
                     }
                 }
+            });
+        }
+        
+        if (this.nimcodeProcess.stderr) {
+            this.nimcodeProcess.stderr.on('data', (data) => {
+                console.error(`NimCode stderr: ${data}`);
             });
         }
 
@@ -181,45 +185,27 @@ export class ChatPanel {
       display: flex;
       flex-direction: column;
       height: 100vh;
-    }
-
-    .header {
-      padding: 12px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: var(--vscode-editorGroupHeader-tabsBackground);
-      border-bottom: 1px solid var(--vscode-widget-border);
-    }
-    
-    .header select {
-      background: var(--vscode-dropdown-background);
-      color: var(--vscode-dropdown-foreground);
-      border: 1px solid var(--vscode-dropdown-border);
-      padding: 6px;
-      border-radius: 4px;
-      outline: none;
+      overflow: hidden;
     }
 
     .chat-container {
       flex: 1;
       overflow-y: auto;
       padding: 24px;
+      padding-bottom: 140px; /* Space for the floating pill */
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 24px;
       max-width: 900px;
       margin: 0 auto;
       width: 100%;
+      box-sizing: border-box;
     }
     
     .message {
-      padding: 16px 20px;
-      border-radius: 8px;
       line-height: 1.6;
       font-size: 14px;
-      max-width: 85%;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      max-width: 100%;
     }
     
     .message p { margin-top: 0; }
@@ -227,159 +213,212 @@ export class ChatPanel {
     
     .message.user {
       align-self: flex-end;
-      background-color: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border-bottom-right-radius: 2px;
+      color: var(--vscode-editor-foreground);
+      background-color: var(--vscode-editorWidget-background);
+      padding: 12px 16px;
+      border-radius: 12px;
+      max-width: 80%;
+      border: 1px solid var(--vscode-widget-border);
     }
     
     .message.assistant {
       align-self: flex-start;
-      background-color: var(--vscode-editorWidget-background);
-      border: 1px solid var(--vscode-widget-border);
-      border-bottom-left-radius: 2px;
+      color: var(--vscode-editor-foreground);
       width: 100%;
     }
     
     .message.info {
       align-self: center;
-      background-color: transparent;
       color: var(--vscode-descriptionForeground);
-      border: none;
-      box-shadow: none;
       text-align: center;
-      font-style: italic;
+      font-size: 12px;
     }
     
     .message.tool-request {
-      align-self: center;
+      align-self: flex-start;
       background-color: var(--vscode-editorWidget-background);
-      border: 1px solid var(--vscode-focusBorder);
-      width: 90%;
+      border: 1px solid var(--vscode-widget-border);
+      border-radius: 8px;
+      padding: 16px;
+      width: 100%;
+      box-sizing: border-box;
     }
     
     .tool-header {
-      font-weight: bold;
-      margin-bottom: 8px;
+      font-weight: 600;
+      margin-bottom: 12px;
       color: var(--vscode-textLink-foreground);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
     
     .tool-args {
       background: var(--vscode-textCodeBlock-background);
-      padding: 10px;
-      border-radius: 4px;
-      font-family: monospace;
+      padding: 12px;
+      border-radius: 6px;
+      font-family: var(--vscode-editor-font-family);
       font-size: 13px;
       overflow-x: auto;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
     }
     
     .tool-actions {
       display: flex;
-      gap: 10px;
+      gap: 8px;
     }
 
+    /* Claude Code style pill input */
     .input-container {
-      padding: 20px 24px;
-      background-color: var(--vscode-editor-background);
-      border-top: 1px solid var(--vscode-widget-border);
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 48px);
+      max-width: 852px;
+      background-color: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-widget-border);
+      border-radius: 16px;
+      padding: 12px 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
       display: flex;
-      justify-content: center;
-    }
-    
-    .input-wrapper {
-      max-width: 900px;
-      width: 100%;
+      flex-direction: column;
+      z-index: 100;
     }
     
     textarea {
       width: 100%;
-      background-color: var(--vscode-input-background);
+      background-color: transparent;
       color: var(--vscode-input-foreground);
-      border: 1px solid var(--vscode-input-border);
-      padding: 14px;
-      border-radius: 6px;
+      border: none;
       font-family: inherit;
       font-size: 14px;
       resize: none;
       outline: none;
-      box-sizing: border-box;
-      transition: border-color 0.2s;
+      padding: 0;
+      margin-bottom: 8px;
+      min-height: 22px;
+      max-height: 250px;
+      overflow-y: auto;
+      line-height: 1.5;
     }
     
-    textarea:focus {
-      border-color: var(--vscode-focusBorder);
+    textarea::placeholder {
+      color: var(--vscode-input-placeholderForeground);
     }
     
     .controls {
       display: flex;
       justify-content: space-between;
-      margin-top: 12px;
+      align-items: center;
     }
     
-    button {
-      background-color: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
+    .controls-left {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      color: var(--vscode-descriptionForeground);
+      font-size: 12px;
+    }
+    
+    .icon-btn {
+      background: none;
       border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
+      color: var(--vscode-icon-foreground);
       cursor: pointer;
-      font-weight: 500;
-      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 4px;
+      opacity: 0.8;
     }
     
-    button:hover { background-color: var(--vscode-button-hoverBackground); }
+    .icon-btn:hover {
+      background: var(--vscode-toolbar-hoverBackground);
+      opacity: 1;
+    }
+    
+    .submit-btn {
+      background-color: var(--vscode-icon-foreground);
+      border: none;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s;
+    }
+    
+    .submit-btn:hover {
+      opacity: 0.8;
+    }
+    
+    .submit-btn svg {
+      fill: var(--vscode-editorWidget-background);
+    }
     
     button.secondary {
       background-color: var(--vscode-button-secondaryBackground);
       color: var(--vscode-button-secondaryForeground);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
     }
-    
-    button.secondary:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
     
     button.danger {
       background-color: var(--vscode-errorForeground);
       color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
     }
     
     /* Markdown Styles */
     pre {
       background-color: var(--vscode-textCodeBlock-background);
-      padding: 14px;
-      border-radius: 6px;
+      padding: 16px;
+      border-radius: 8px;
       overflow-x: auto;
-      margin: 12px 0;
+      margin: 16px 0;
+      border: 1px solid var(--vscode-widget-border);
     }
     code { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
 <body>
 
-  <div class="header">
-    <div style="font-weight: 600; font-size: 16px;">NimCode AI</div>
-    <div style="display: flex; gap: 12px;">
-      <select id="model-select" title="AI Model" style="max-width: 250px; text-overflow: ellipsis;"></select>
-      <select id="mode-select" title="Permission Mode">
-        <option value="default">Interactive</option>
-        <option value="auto">Auto-Safe</option>
-        <option value="bypass">Bypass (Auto-Pilot)</option>
-      </select>
-    </div>
-  </div>
-
   <div class="chat-container" id="chat">
     <div class="message assistant">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg>
+        <strong>NimCode</strong>
+      </div>
       <p>Hello! I am NimCode, your AI coding assistant.</p>
-      <p>How can I help you today? You can type normal requests or use slash commands like <code>/help</code> or <code>/doctor</code>.</p>
     </div>
   </div>
   
   <div class="input-container">
-    <div class="input-wrapper">
-      <textarea id="prompt-input" rows="4" placeholder="Ask NimCode to build something... (Shift+Enter for new line)"></textarea>
-      <div class="controls">
-        <button class="secondary" id="clear-btn">Clear Context</button>
-        <button id="send-btn">Send Message</button>
+    <textarea id="prompt-input" rows="1" placeholder="Queue another message..."></textarea>
+    <div class="controls">
+      <div class="controls-left">
+        <button class="icon-btn" title="Add attachment (dummy)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+        <button class="icon-btn" title="Slash commands (dummy)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line></svg>
+        </button>
+        <span style="margin-left: 8px;">Edit automatically</span>
       </div>
+      <button class="submit-btn" id="send-btn" title="Send Message">
+        <svg width="12" height="12" viewBox="0 0 24 24"><rect width="24" height="24" rx="4"></rect></svg>
+      </button>
     </div>
   </div>
 
@@ -388,9 +427,12 @@ export class ChatPanel {
     const chat = document.getElementById('chat');
     const input = document.getElementById('prompt-input');
     const sendBtn = document.getElementById('send-btn');
-    const clearBtn = document.getElementById('clear-btn');
-    const modeSelect = document.getElementById('mode-select');
-    const modelSelect = document.getElementById('model-select');
+
+    // Auto-resize textarea
+    input.addEventListener('input', function() {
+      this.style.height = 'auto';
+      this.style.height = (this.scrollHeight) + 'px';
+    });
 
     marked.setOptions({
       highlight: function(code, lang) {
@@ -404,30 +446,12 @@ export class ChatPanel {
     let currentAssistantMessage = null;
     let rawAssistantContent = "";
 
-    modeSelect.addEventListener('change', (e) => {
-      vscode.postMessage({ type: 'set_mode', mode: e.target.value });
-    });
-
-    modelSelect.addEventListener('change', (e) => {
-      vscode.postMessage({ type: 'set_model', model: e.target.value });
-    });
-
     window.addEventListener('message', event => {
       const message = event.data;
       switch (message.type) {
         case 'clear_ui':
           chat.innerHTML = '<div class="message assistant"><p>Started a new session.</p></div>';
           currentAssistantMessage = null;
-          break;
-        case 'models_list':
-          modelSelect.innerHTML = '';
-          message.models.forEach(model => {
-            const opt = document.createElement('option');
-            opt.value = model;
-            opt.textContent = model.split('/').pop();
-            if (model === message.current) opt.selected = true;
-            modelSelect.appendChild(opt);
-          });
           break;
         case 'info':
           const infoEl = document.createElement('div');
@@ -440,11 +464,25 @@ export class ChatPanel {
           if (!currentAssistantMessage) {
             currentAssistantMessage = document.createElement('div');
             currentAssistantMessage.className = 'message assistant markdown-body';
+            
+            // Add Assistant header
+            const header = document.createElement('div');
+            header.style = "display: flex; align-items: center; gap: 8px; margin-bottom: 12px; margin-top: 16px;";
+            header.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12 2.1 7.1"></path><path d="M12 12l9.9 4.9"></path></svg><strong>NimCode</strong>';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'content-body';
+            
+            currentAssistantMessage.appendChild(header);
+            currentAssistantMessage.appendChild(contentDiv);
             chat.appendChild(currentAssistantMessage);
             rawAssistantContent = "";
           }
           rawAssistantContent += message.content;
-          currentAssistantMessage.innerHTML = marked.parse(rawAssistantContent);
+          const contentBody = currentAssistantMessage.querySelector('.content-body');
+          if (contentBody) {
+             contentBody.innerHTML = marked.parse(rawAssistantContent);
+          }
           chat.scrollTop = chat.scrollHeight;
           break;
         case 'done':
@@ -472,7 +510,7 @@ export class ChatPanel {
       
       const header = document.createElement('div');
       header.className = 'tool-header';
-      header.textContent = '⚙️ Execute Tool: ' + tool;
+      header.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg> Execute Tool: ' + tool;
       
       const argsDisplay = document.createElement('div');
       argsDisplay.className = 'tool-args';
@@ -482,10 +520,11 @@ export class ChatPanel {
       actions.className = 'tool-actions';
       
       const approveBtn = document.createElement('button');
+      approveBtn.className = 'secondary';
       approveBtn.textContent = 'Approve';
       approveBtn.onclick = () => {
-        card.style.opacity = '0.5';
-        actions.innerHTML = '<i>Approved</i>';
+        card.style.opacity = '0.6';
+        actions.innerHTML = '<span style="color:var(--vscode-testing-iconPassed)">✓ Approved</span>';
         vscode.postMessage({ type: 'action_response', granted: true });
       };
       
@@ -493,8 +532,8 @@ export class ChatPanel {
       rejectBtn.textContent = 'Reject';
       rejectBtn.className = 'danger';
       rejectBtn.onclick = () => {
-        card.style.opacity = '0.5';
-        actions.innerHTML = '<i style="color:red;">Rejected</i>';
+        card.style.opacity = '0.6';
+        actions.innerHTML = '<span style="color:var(--vscode-testing-iconFailed)">✗ Rejected</span>';
         vscode.postMessage({ type: 'action_response', granted: false });
       };
       
@@ -520,7 +559,9 @@ export class ChatPanel {
       chat.scrollTop = chat.scrollHeight;
 
       vscode.postMessage({ type: 'prompt', value: text });
+      
       input.value = '';
+      input.style.height = 'auto'; // reset height
     }
 
     sendBtn.addEventListener('click', sendPrompt);
@@ -529,11 +570,6 @@ export class ChatPanel {
         e.preventDefault();
         sendPrompt();
       }
-    });
-
-    clearBtn.addEventListener('click', () => {
-      vscode.postMessage({ type: 'clear' });
-      chat.innerHTML = '<div class="message assistant"><p>Context cleared. How can I help?</p></div>';
     });
   </script>
 </body>
