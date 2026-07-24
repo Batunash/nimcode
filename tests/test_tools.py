@@ -301,9 +301,19 @@ def test_execute_symbol_search(tmp_path):
 
 def test_execute_semantic_search():
     from nimcode.tools import ToolRegistry
-    ToolRegistry._FTS_DB = None
-    res = ToolRegistry.execute({"tool": "SemanticSearch", "args": {"query": "hello"}})
-    assert "not indexed" in res
+    from unittest.mock import patch, MagicMock
+    
+    with patch("nimcode.rag.LightweightRAG") as MockRag:
+        mock_instance = MagicMock()
+        mock_instance.search.return_value = [("fake_path.py", 5.0, "snippet")]
+        MockRag.return_value = mock_instance
+        
+        # Reset any existing indexer to force instantiation
+        ToolRegistry._RAG_INDEXER = None
+        
+        res = ToolRegistry.execute({"tool": "SemanticSearch", "args": {"query": "hello"}})
+        assert "fake_path.py" in res
+        assert "snippet" in res
 
 def test_execute_ask_question():
     from unittest.mock import patch
