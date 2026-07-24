@@ -543,6 +543,22 @@ class NimcodeREPL:
                     console.print(table)
                     console.print("[dim]Note: Full replay logs are stored in .nimcode/logs/[/dim]")
                     continue
+                elif user_input.strip().startswith("/fix"):
+                    parts = user_input.strip().split(" ", 1)
+                    if len(parts) > 1:
+                        fix_cmd = parts[1]
+                        console.print(f"[bold red]🔧 Auto-Fixer Loop Started for: {fix_cmd}[/bold red]")
+                        
+                        # Temporarily elevate permissions for the auto-fix loop
+                        self.agent.permission_engine.mode = PermissionMode.BYPASS
+                        self.agent.max_turns = 50
+                        self.is_autofix = True
+                        
+                        prompt = f"Run the following command using the Bash tool: `{fix_cmd}`. If it fails, carefully read the error output, use the Edit or Write tools to fix the code, and then run the command again. Repeat this process until the command returns exit code 0. Once it passes, output TASK_COMPLETE."
+                        user_input = prompt
+                    else:
+                        console.print("[yellow]Usage: /fix <command> (e.g. /fix pytest)[/yellow]")
+                        continue
                 elif user_input.strip() == "/autofix-pr":
                     console.print("[bold green]🔧 Pull Request Auto-Fixer...[/bold green]")
                     self.messages.append({"role": "user", "content": "Use the Bash tool to run 'gh pr view --json url,body,comments,files' to analyze the current pull request. Then fix any issues mentioned in the PR comments."})
@@ -1159,8 +1175,14 @@ class NimcodeREPL:
 
                 if not user_input.strip():
                     continue
-                    
                 await self.agent.run(user_input)
+                
+                if getattr(self, 'is_autofix', False):
+                    self.agent.permission_engine.mode = PermissionMode.DEFAULT
+                    self.agent.max_turns = self.settings.get("max_turns", 30)
+                    self.is_autofix = False
+                    console.print("[green]Auto-fix complete. Restored standard permissions and turn limits.[/green]")
+                    
                 if self.settings.get("audio_cues", True):
                     import sys
                     sys.stdout.write("\a")

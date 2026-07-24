@@ -100,6 +100,11 @@ class ToolRegistry:
                 },
                 "required": ["query"]
             },
+            "ReadActiveEditor": {
+                "description": "Reads the content of the currently active file in the user's VS Code editor. Only works inside the VS Code extension.",
+                "parameters": {},
+                "required": []
+            },
             "Glob": {
                 "description": "Find files by pattern.",
                 "parameters": {
@@ -185,6 +190,8 @@ class ToolRegistry:
                 return cls._execute_symbol_search(args["symbol_name"], args["directory"], cwd)
             elif tool_name == "SemanticSearch":
                 return cls._execute_semantic_search(args["query"])
+            elif tool_name == "ReadActiveEditor":
+                return cls._execute_read_active_editor(cwd)
             elif tool_name == "AskQuestion":
                 return cls._execute_ask_question(args["question"], args.get("options", []))
             else:
@@ -334,32 +341,24 @@ class ToolRegistry:
         except Exception as e:
             return f"Error restoring backup: {e}"
             
+    _RAG_INDEXER = None
+    
     @staticmethod
     def _execute_semantic_search(query: str) -> str:
-        if ToolRegistry._FTS_DB is None:
-            return "Error: Database not indexed. Ask the user to run /index first."
-            
         try:
-            import re
-            clean_query = re.sub(r'[^\w\s]', ' ', query).strip()
-            terms = [t for t in clean_query.split() if len(t) > 2]
-            if not terms:
-                return "Error: Query too short or invalid."
+            if ToolRegistry._RAG_INDEXER is None:
+                from .rag import LightweightRAG
+                ToolRegistry._RAG_INDEXER = LightweightRAG(os.getcwd())
+                ToolRegistry._RAG_INDEXER.build_index()
                 
-            fts_query = " OR ".join(terms)
-            
-            cursor = ToolRegistry._FTS_DB.execute(
-                "SELECT path, snippet(files, 1, '>>>', '<<<', '...', 15) FROM files WHERE files MATCH ? ORDER BY rank LIMIT 10", 
-                (fts_query,)
-            )
-            results = cursor.fetchall()
+            results = ToolRegistry._RAG_INDEXER.search(query, top_k=5)
             
             if not results:
                 return "No semantic matches found."
                 
             out = []
-            for path, snip in results:
-                out.append(f"File: {path}\nSnippet: {snip}\n")
+            for path, score, snip in results:
+                out.append(f"File: {path} (Score: {score:.2f})\nSnippet: {snip}\n")
             return "\n".join(out)
         except Exception as e:
             return f"Search error: {e}"
@@ -728,3 +727,40 @@ class ToolRegistry:
         else:
             ans = Prompt.ask("[bold yellow]Your answer[/bold yellow]")
             return f"User answered: {ans}"
+
+    @staticmethod
+    def _execute_read_active_editor(cwd: str) -> str:
+        import sys
+        import time
+        import json
+        
+        # Trigger the VS Code extension by emitting a special JSON payload
+        msg = {"type": "vscode_action", "action": "read_active_editor"}
+        sys.stdout.write(json.dumps(msg) + "\n")
+        sys.stdout.flush()
+        
+        # Wait for the file to be written by the extension
+        target_path = os.path.join(cwd, ".nimcode", ".active_editor")
+        
+        max_retries = 20
+        for _ in range(max_retries):
+            time.sleep(0.1)
+            if os.path.exists(target_path):
+                try:
+                    with open(target_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    # Clean up the file
+                    try:
+                        os.remove(target_path)
+                    except:
+                        pass
+                        
+                    if not data.get("path"):
+                        return "No active editor found in VS Code."
+                        
+                    return f"Active File: {data['path']}\n\nContent:\n{data['content']}"
+                except Exception:
+                    pass
+                    
+        return "Timed out waiting for VS Code extension. Make sure NimCode is running inside VS Code."

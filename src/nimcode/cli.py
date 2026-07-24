@@ -94,9 +94,12 @@ def main():
     args = parser.parse_args()
     
     settings = load_settings()
+    api_base_url = settings.get("api_base_url", "https://integrate.api.nvidia.com/v1")
     
     final_key = args.api_key or os.environ.get("NIM_API_KEY") or settings.get("api_key")
-    if not final_key:
+    is_local = "localhost" in api_base_url or "127.0.0.1" in api_base_url
+    
+    if not final_key and not is_local:
         console.print("[yellow]No API Key found. Let's get you set up![/yellow]")
         run_login()
         settings = load_settings()
@@ -104,6 +107,8 @@ def main():
         if not final_key:
             console.print("[bold red]API Key is required to use NimCode. Exiting.[/bold red]")
             sys.exit(1)
+            
+    final_key = final_key or "local-dummy-key"
         
     agent = Agent(
         api_key=final_key,

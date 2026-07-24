@@ -130,14 +130,42 @@ export class ChatPanel {
                     if (line.trim() === '') continue;
                     try {
                         const msg = JSON.parse(line);
-                        this._panel.webview.postMessage(msg);
+                        if (msg.type === "vscode_action") {
+                            this.handleVSCodeAction(msg);
+                        } else {
+                            this._panel.webview.postMessage(msg);
+                        }
                     } catch (e) {
-                        // Ignore non-JSON output (maybe debug prints)
+                        // Ignore non-JSON output
                     }
                 }
             });
         }
         
+    private async handleVSCodeAction(msg: any) {
+        if (msg.action === "read_active_editor") {
+            const editor = vscode.window.activeTextEditor;
+            const fs = require('fs');
+            const wsRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+            if (!wsRoot) return;
+            const targetPath = path.join(wsRoot, '.nimcode', '.active_editor');
+            
+            if (editor) {
+                fs.writeFileSync(targetPath, JSON.stringify({path: editor.document.uri.fsPath, content: editor.document.getText()}));
+            } else {
+                fs.writeFileSync(targetPath, JSON.stringify({path: "", content: ""}));
+            }
+        } else if (msg.action === "apply_inline_diff") {
+            // Future placeholder for apply_inline_diff
+            const fs = require('fs');
+            const wsRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+            if (wsRoot) {
+                const targetPath = path.join(wsRoot, '.nimcode', '.active_editor');
+                fs.writeFileSync(targetPath, JSON.stringify({status: "success"}));
+            }
+        }
+    }
+
         if (this.nimcodeProcess.stderr) {
             this.nimcodeProcess.stderr.on('data', (data) => {
                 console.error(`NimCode stderr: ${data}`);

@@ -9,6 +9,7 @@ def load_settings() -> Dict[str, Any]:
     """Loads configuration from ~/.nimcode/settings.json and .nimcode/settings.json"""
     settings = {
         "model": "meta/llama-3.1-70b-instruct",
+        "api_base_url": "https://integrate.api.nvidia.com/v1",
         "mcp_servers": {}
     }
     

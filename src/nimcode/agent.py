@@ -52,7 +52,8 @@ class Agent:
         # Load global settings
         self.settings = load_settings()
         self.model = model or self.settings.get("model", "meta/llama-3.1-70b-instruct")
-        self.client = NimClient(api_key=api_key, model=self.model)
+        api_base_url = self.settings.get("api_base_url", "https://integrate.api.nvidia.com/v1")
+        self.client = NimClient(api_key=api_key, base_url=api_base_url, model=self.model)
         
         # Initialize MCP Manager
         self.mcp = MCPManager(self.settings)
