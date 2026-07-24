@@ -65,14 +65,7 @@ class Agent:
         # Base system prompt
         final_prompt = SYSTEM_PROMPT + self.mcp.get_system_prompt_additions()
         
-        # Inject Repo Map
-        try:
-            from .repo_map import RepoMapper
-            mapper = RepoMapper(os.getcwd())
-            repo_map = mapper.generate_map()
-            final_prompt += f"\n\n--- REPOSITORY MAP ---\n{repo_map}\n----------------------\n"
-        except Exception as e:
-            logger.error(f"Failed to generate repo map: {e}")
+        # We inject the Repo Map dynamically during the first run to avoid blocking startup.
         
         # Load .nimcoderules if present
         rules_path = os.path.join(os.getcwd(), ".nimcoderules")
@@ -237,6 +230,16 @@ class Agent:
 
     async def run_headless(self, query: str, max_turns: int = 5) -> str:
         """Runs the agent without terminal streaming, useful for background tasks."""
+        if len(self.messages) == 1:
+            try:
+                from .repo_map import RepoMapper
+                import asyncio
+                mapper = RepoMapper(os.getcwd())
+                repo_map = await asyncio.to_thread(mapper.generate_map)
+                self.messages[0]["content"] += f"\n\n--- REPOSITORY MAP ---\n{repo_map}\n----------------------\n"
+            except Exception as e:
+                logger.error(f"Failed to generate repo map: {e}")
+                
         self.messages.append({"role": "user", "content": query})
         turn = 0
         from .tools import ToolRegistry
@@ -282,9 +285,14 @@ class Agent:
             
         messages = [{"role": "system", "content": "You are a summarization AI."}, {"role": "user", "content": summary_prompt}]
         try:
+            # Use a robust default model for distillation to prevent 404 errors with unsupported endpoints
+            original_model = self.client.model
+            self.client.model = "meta/llama-3.1-8b-instruct"
             summary = await self.client.chat_one_shot(messages)
+            self.client.model = original_model
             system_msg["content"] += f"\n\n[PREVIOUS MEMORY SUMMARY]\n{summary}"
         except Exception as e:
+            self.client.model = original_model
             logger.error(f"Distillation failed: {e}")
             
         return [system_msg] + recent_msgs
@@ -294,6 +302,18 @@ class Agent:
         if hasattr(self.mcp, "connect_all"):
             await self.mcp.connect_all()
             
+        if len(self.messages) == 1:
+            try:
+                from rich.console import Console
+                Console().print("[dim italic]Indexing repository...[/dim italic]")
+                from .repo_map import RepoMapper
+                import asyncio
+                mapper = RepoMapper(os.getcwd())
+                repo_map = await asyncio.to_thread(mapper.generate_map)
+                self.messages[0]["content"] += f"\n\n--- REPOSITORY MAP ---\n{repo_map}\n----------------------\n"
+            except Exception as e:
+                logger.error(f"Failed to generate repo map: {e}")
+                
         if initial_prompt:
             self.messages.append({"role": "user", "content": initial_prompt})
         

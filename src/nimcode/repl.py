@@ -347,6 +347,7 @@ class NimcodeREPL:
                     table.add_column("Description", style="white")
                     
                     table.add_row("/help", "Show this help menu")
+                    table.add_row("/login", "Login with your NVIDIA NIM API Key")
                     table.add_row("/plan", "Enter planning mode (safe mode)")
                     table.add_row("/code", "Enter coding mode (all tools enabled)")
                     table.add_row("/trust", "Enter trust mode (runs all tools without permission)")
@@ -429,6 +430,16 @@ class NimcodeREPL:
                     console.print("[bold blue]Entering Plan mode.[/bold blue] Mutating tools will be denied by default.")
                     self.permission_engine.mode = PermissionMode.DEFAULT
                     self.messages.append({"role": "system", "content": "You are now in planning mode. Use Read tools to explore. Then use the Write tool to write a markdown plan file inside the '.nimcode/plans/' directory (e.g., '.nimcode/plans/feature_x_plan.md'). Do NOT use Bash or Edit tools."})
+                    continue
+                elif user_input.strip() == "/login":
+                    from .cli import run_login
+                    run_login()
+                    # Re-initialize client if api key changed
+                    from .config import load_settings
+                    settings = load_settings()
+                    if settings.get("api_key"):
+                        self.agent.client.api_key = settings.get("api_key")
+                        self.agent.client.headers["Authorization"] = f"Bearer {settings.get('api_key')}"
                     continue
                 elif user_input.strip().startswith("/teleport"):
                     parts = user_input.strip().split(" ", 1)
@@ -1132,7 +1143,7 @@ class NimcodeREPL:
                     continue
                 elif user_input.strip().startswith("/"):
                     import difflib
-                    valid_commands = ["/help", "/plan", "/code", "/trust", "/untrust", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/update", "/undo", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile", "/sandbox"]
+                    valid_commands = ["/help", "/login", "/plan", "/code", "/trust", "/untrust", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/update", "/undo", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile", "/sandbox"]
                     valid_commands.extend([f"/{cmd}" for cmd in self.plugin_manager.get_command_names()])
                     
                     cmd_parts = user_input.strip().split(" ", 1)
