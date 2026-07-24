@@ -238,51 +238,60 @@ class NimcodeREPL:
                 ('class:toolbar_text', f' Model: {self.model} | Mode: {mode} | Tokens: {tokens} | Cost: ${cost:.4f} | Effort: {effort}{goal_ui}'),
                 ('class:toolbar_shortcut', ' [Alt+Enter] multiline '),
             ]
-        from prompt_toolkit.completion import NestedCompleter, WordCompleter, PathCompleter
+        from prompt_toolkit.completion import Completer, Completion, PathCompleter
         
-        command_completer = NestedCompleter.from_nested_dict({
-            '/help': None,
-            '/plan': None,
-            '/code': None,
-            '/models': None,
-            '/theme': WordCompleter(['monokai', 'dracula', 'nord', 'github']),
-            '/clear': None,
-            '/compact': None,
-            '/commit': None,
-            '/fix': None,
-            '/testgen': PathCompleter(),
-            '/vision': None,
-            '/voice': None,
-            '/index': None,
-            '/exit': None,
-            '/quit': None,
-            '/learn': None,
-            '/cost': None,
-            '/effort': WordCompleter(['Low', 'Medium', 'High']),
-            '/thinking': None,
-            '/add': PathCompleter(),
-            '/research': None,
-            '/swarm': None,
-            '/tdd': None,
-            '/mcp': WordCompleter(['install']),
-            '/rewind': None,
-            '/fork': None,
-            '/grill-me': None,
-            '/teleport': PathCompleter(),
-            '/buddy': None,
-            '/ultraplan': None,
-            '/bughunter': None,
-            '/security-review': None,
-            '/doctor': None,
-            '/permissions': WordCompleter(['auto', 'bypass', 'default']),
-            '/graph': None,
-            '/guardian': None,
-            '/thinkback': None,
-            '/autofix-pr': None,
-            '/terraform-god': None,
-            '/sql-tune': None,
-            '/decompile': PathCompleter(),
-        })
+        class SlashCompleter(Completer):
+            def __init__(self):
+                self.commands = [
+                    '/help', '/plan', '/code', '/models', '/theme', '/clear', '/compact', 
+                    '/commit', '/fix', '/testgen', '/vision', '/voice', '/index', '/exit', 
+                    '/quit', '/learn', '/cost', '/effort', '/thinking', '/add', '/research', 
+                    '/swarm', '/tdd', '/mcp', '/rewind', '/fork', '/grill-me', '/teleport', 
+                    '/buddy', '/ultraplan', '/bughunter', '/security-review', '/doctor', 
+                    '/permissions', '/graph', '/guardian', '/thinkback', '/autofix-pr', 
+                    '/terraform-god', '/sql-tune', '/decompile'
+                ]
+                self.subcommands = {
+                    '/theme': ['monokai', 'dracula', 'nord', 'github'],
+                    '/effort': ['Low', 'Medium', 'High'],
+                    '/mcp': ['install'],
+                    '/permissions': ['auto', 'bypass', 'default']
+                }
+                self.path_completer = PathCompleter()
+
+            def get_completions(self, document, complete_event):
+                text = document.text_before_cursor
+                parts = text.split()
+                
+                if not parts:
+                    return
+
+                if len(parts) == 1 or (len(parts) == 2 and text.endswith(' ')):
+                    if not text.endswith(' '):
+                        word = parts[0]
+                        for c in self.commands:
+                            if c.startswith(word):
+                                yield Completion(c, start_position=-len(word))
+                    else:
+                        cmd = parts[0]
+                        if cmd in self.subcommands:
+                            for sub in self.subcommands[cmd]:
+                                yield Completion(sub, start_position=0)
+                        elif cmd in ['/testgen', '/add', '/teleport', '/decompile']:
+                            yield from self.path_completer.get_completions(document, complete_event)
+                            
+                elif len(parts) >= 2:
+                    cmd = parts[0]
+                    word = parts[-1] if not text.endswith(' ') else ''
+                    
+                    if cmd in self.subcommands:
+                        for sub in self.subcommands[cmd]:
+                            if sub.startswith(word):
+                                yield Completion(sub, start_position=-len(word))
+                    elif cmd in ['/testgen', '/add', '/teleport', '/decompile']:
+                        yield from self.path_completer.get_completions(document, complete_event)
+
+        command_completer = SlashCompleter()
         
         from prompt_toolkit.lexers import PygmentsLexer
         from pygments.lexers.shell import BashLexer
@@ -997,6 +1006,9 @@ class NimcodeREPL:
                     sys.stdout.flush()
                 
             except KeyboardInterrupt:
+                console.print("\n[bold yellow]⚠ Operation cancelled by user. (Press Ctrl+D to exit)[/bold yellow]")
+                continue
+            except asyncio.CancelledError:
                 console.print("\n[bold yellow]⚠ Operation cancelled by user. (Press Ctrl+D to exit)[/bold yellow]")
                 continue
             except EOFError:
