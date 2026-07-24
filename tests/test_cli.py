@@ -91,8 +91,10 @@ def test_main_with_key():
                 mock_agent_class.return_value = mock_agent
                 with patch("nimcode.cli.asyncio.run") as mock_run:
                     with patch("sys.stdin.isatty", return_value=True):
-                        main()
-                        mock_run.assert_called_once()
+                        with patch("keyring.get_password", return_value=None):
+                            with patch("rich.prompt.Prompt.ask", return_value="1"):
+                                main()
+                                assert mock_run.called
 
 def test_main_piped_input():
     with patch("sys.argv", ["nimcode"]):
@@ -101,8 +103,10 @@ def test_main_piped_input():
                 with patch("sys.stdin.isatty", return_value=False):
                     with patch("sys.stdin.read", return_value="piped"):
                         with patch("nimcode.cli.asyncio.run") as mock_run:
-                            main()
-                            mock_run.assert_called_once()
+                            with patch("keyring.get_password", return_value=None):
+                                with patch("rich.prompt.Prompt.ask", return_value="1"):
+                                    main()
+                                    assert mock_run.called
 
 def test_main_repl():
     with patch("sys.argv", ["nimcode"]):
@@ -110,5 +114,7 @@ def test_main_repl():
             with patch("nimcode.agent.Agent") as mock_agent_class:
                 with patch("sys.stdin.isatty", return_value=True):
                     with patch("nimcode.cli.asyncio.run") as mock_run:
-                        main()
-                        mock_run.assert_called_once()
+                        with patch("keyring.get_password", return_value=None):
+                            with patch("rich.prompt.Prompt.ask", return_value="1"):
+                                main()
+                                assert mock_run.called

@@ -2,47 +2,55 @@ import pytest
 from unittest.mock import patch, MagicMock
 from nimcode.permissions import PermissionEngine, PermissionMode
 
-def test_permission_bypass():
+@pytest.mark.asyncio
+async def test_permission_bypass():
     engine = PermissionEngine(mode=PermissionMode.BYPASS)
-    assert engine.check_permission({"tool": "Bash", "args": {}}) == True
+    assert await engine.check_permission({"tool": "Bash", "args": {}}) == True
 
-def test_permission_readonly_blocked():
+@pytest.mark.asyncio
+async def test_permission_readonly_blocked():
     engine = PermissionEngine(mode=PermissionMode.AUTO)
     # Bash should still be checked (not returned True immediately) and if not interactive, returns True for now (which is a flaw but let's test current behavior)
-    assert engine.check_permission({"tool": "Bash", "args": {}}) == True
+    assert await engine.check_permission({"tool": "Bash", "args": {}}) == True
 
-def test_permission_safe_tools():
+@pytest.mark.asyncio
+async def test_permission_safe_tools():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     # Read is a safe tool
-    assert engine.check_permission({"tool": "Read", "args": {}}) == True
-    assert engine.check_permission({"tool": "Glob", "args": {}}) == True
+    assert await engine.check_permission({"tool": "Read", "args": {}}) == True
+    assert await engine.check_permission({"tool": "Glob", "args": {}}) == True
 
-def test_permission_default_interactive_accept():
+@pytest.mark.asyncio
+async def test_permission_default_interactive_accept():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", return_value="a"):
-            assert engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == True
+            assert await engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == True
 
-def test_permission_default_interactive_reject():
+@pytest.mark.asyncio
+async def test_permission_default_interactive_reject():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", return_value="r"):
-            assert engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == False
+            assert await engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == False
 
-def test_permission_default_interactive_empty_accept():
+@pytest.mark.asyncio
+async def test_permission_default_interactive_empty_accept():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", return_value=""):
-            assert engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == True
+            assert await engine.check_permission({"tool": "Bash", "args": {"command": "echo hi"}}) == True
 
-def test_permission_default_interactive_unknown_tool_format():
+@pytest.mark.asyncio
+async def test_permission_default_interactive_unknown_tool_format():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", return_value="a"):
             # UnknownTool triggers the else branch for generic JSON display
-            assert engine.check_permission({"tool": "UnknownTool", "args": {"k1": "v1", "k2": "v2"}}) == True
+            assert await engine.check_permission({"tool": "UnknownTool", "args": {"k1": "v1", "k2": "v2"}}) == True
 
-def test_permission_edit_bash_command():
+@pytest.mark.asyncio
+async def test_permission_edit_bash_command():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     call = {"tool": "Bash", "args": {"command": "echo hi"}}
     
@@ -50,10 +58,11 @@ def test_permission_edit_bash_command():
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", side_effect=["e", "a"]):
             with patch("prompt_toolkit.prompt", return_value="echo edited"):
-                assert engine.check_permission(call) == True
+                assert await engine.check_permission(call) == True
                 assert call["args"]["command"] == "echo edited"
 
-def test_permission_edit_other_args_valid():
+@pytest.mark.asyncio
+async def test_permission_edit_other_args_valid():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     call = {"tool": "Write", "args": {"file_path": "a.txt", "content": "hello"}}
     
@@ -61,10 +70,11 @@ def test_permission_edit_other_args_valid():
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", side_effect=["e", "a"]):
             with patch("prompt_toolkit.prompt", return_value='{"file_path": "a.txt", "content": "edited"}'):
-                assert engine.check_permission(call) == True
+                assert await engine.check_permission(call) == True
                 assert call["args"]["content"] == "edited"
 
-def test_permission_edit_other_args_invalid_json():
+@pytest.mark.asyncio
+async def test_permission_edit_other_args_invalid_json():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)
     call = {"tool": "Write", "args": {"file_path": "a.txt"}}
     
@@ -72,5 +82,5 @@ def test_permission_edit_other_args_invalid_json():
     with patch("sys.stdin.isatty", return_value=True):
         with patch("builtins.input", side_effect=["e", "e", "a"]):
             with patch("prompt_toolkit.prompt", side_effect=["bad json", '{"file_path": "b.txt"}', '{"file_path": "b.txt"}']):
-                assert engine.check_permission(call) == True
+                assert await engine.check_permission(call) == True
                 assert call["args"]["file_path"] == "b.txt"
