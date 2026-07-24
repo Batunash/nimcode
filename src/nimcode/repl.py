@@ -191,7 +191,7 @@ class NimcodeREPL:
         right_content = "[bold orange3]Tips for getting started[/bold orange3]\nRun [cyan]/help[/cyan] to see available commands and shortcuts.\nUse [cyan]/models[/cyan] to change the current model.\n\n[bold orange3]What's new[/bold orange3]\n• Added native multiline REPL support (Alt+Enter for newline).\n• Reverted to classic UI.\n• More robust JSON parsing for tools."
         
         table.add_row(left_content, right_content)
-        panel = Panel(table, title="[bold orange3]NimCode v3.0.0[/bold orange3]", border_style="orange3", box=ROUNDED, title_align="left")
+        panel = Panel(table, title="[bold orange3]NimCode v0.2.0[/bold orange3]", border_style="orange3", box=ROUNDED, title_align="left")
         console.print(panel)
         console.print()
 
