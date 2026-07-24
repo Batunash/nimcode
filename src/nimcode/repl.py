@@ -180,11 +180,21 @@ class NimcodeREPL:
         console.print()
 
         style = Style.from_dict({
-            'prompt': '#ffffff bold',
-            'bottom-toolbar': '#888888 bg:#222222',
-            'toolbar_title': '#ffffff bg:#4400aa bold',
-            'toolbar_text': '#cccccc bg:#222222',
-            'toolbar_shortcut': '#aaaaaa bg:#444444'
+            'prompt': '#00ffff bold',
+            'bottom-toolbar': '#999999 bg:#1e1e1e',
+            'toolbar_title': '#ffffff bg:#5c2d91 bold',
+            'toolbar_text': '#cccccc bg:#1e1e1e',
+            'toolbar_shortcut': '#888888 bg:#2d2d2d',
+            
+            # Claude Code inspired Autocompletion Menu
+            'completion-menu': 'bg:#2b2b2b #eeeeee',
+            'completion-menu.completion': 'bg:#2b2b2b #eeeeee',
+            'completion-menu.completion.current': 'bg:#5c2d91 #ffffff bold',
+            'scrollbar.background': 'bg:#1e1e1e',
+            'scrollbar.button': 'bg:#5c2d91',
+            
+            # Auto-suggestion (greyed out ghost text)
+            'auto-suggestion': '#666666 italic',
         })
         
         from prompt_toolkit.key_binding import KeyBindings
@@ -290,7 +300,7 @@ class NimcodeREPL:
         
         while True:
             try:
-                user_input = await session.prompt_async("> ")
+                user_input = await session.prompt_async("❯ ")
                 if user_input.lower() in ["/exit", "/quit"]:
                     self.agent.save_history()
                     break
@@ -303,6 +313,8 @@ class NimcodeREPL:
                     table.add_row("/help", "Show this help menu")
                     table.add_row("/plan", "Enter planning mode (safe mode)")
                     table.add_row("/code", "Enter coding mode (all tools enabled)")
+                    table.add_row("/trust", "Enter trust mode (runs all tools without permission)")
+                    table.add_row("/untrust", "Disable trust mode (ask for permission)")
                     table.add_row("/models", "Select NVIDIA NIM model")
                     table.add_row("/theme <name>", "Change syntax theme (e.g., monokai)")
                     table.add_row("/clear", "Clear current context history")
@@ -530,6 +542,16 @@ class NimcodeREPL:
                     console.print("[bold magenta]Entering Code mode.[/bold magenta] Standard permissions restored.")
                     self.messages.append({"role": "system", "content": "You are now in coding mode. You may use all available tools."})
                     continue
+                elif user_input.strip() == "/trust":
+                    from nimcode.permissions import PermissionMode
+                    self.agent.permission_engine.mode = PermissionMode.BYPASS
+                    console.print("[bold red]🚨 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission! 🚨[/bold red]")
+                    continue
+                elif user_input.strip() == "/untrust":
+                    from nimcode.permissions import PermissionMode
+                    self.agent.permission_engine.mode = PermissionMode.DEFAULT
+                    console.print("[bold green]🛡️ Trust mode disabled. NimCode will ask for permission again.[/bold green]")
+                    continue
                 elif user_input.strip().startswith("/theme"):
                     parts = user_input.strip().split()
                     if len(parts) > 1:
@@ -537,15 +559,22 @@ class NimcodeREPL:
                         save_global_setting("theme", parts[1])
                         console.print(f"[green]Theme updated to '{parts[1]}'[/green]")
                     else:
-                        from prompt_toolkit.shortcuts import radiolist_dialog
+                        from rich.table import Table
+                        from rich.prompt import Prompt
+                        
                         themes = ['monokai', 'dracula', 'nord', 'github']
-                        choices = [(t, t) for t in themes]
-                        selected_theme = await radiolist_dialog(
-                            title="Syntax Themes",
-                            text="Select a theme:",
-                            values=choices
-                        ).run_async()
-                        if selected_theme:
+                        table = Table(title="🎨 Available Syntax Themes", show_header=True, header_style="bold magenta")
+                        table.add_column("ID", style="cyan", width=4)
+                        table.add_column("Theme Name", style="white")
+                        
+                        for idx, t in enumerate(themes, 1):
+                            table.add_row(str(idx), t)
+                            
+                        console.print(table)
+                        
+                        choice = Prompt.ask("Select a theme by ID", choices=[str(i) for i in range(1, len(themes) + 1)], default="1")
+                        if choice:
+                            selected_theme = themes[int(choice) - 1]
                             self.settings["theme"] = selected_theme
                             save_global_setting("theme", selected_theme)
                             console.print(f"[green]Theme updated to '{selected_theme}'[/green]")
@@ -554,22 +583,36 @@ class NimcodeREPL:
                     continue
                 elif user_input.strip() == "/models":
                     console.print("[bold yellow]Fetching available models from NVIDIA NIM...[/bold yellow]")
-                    models = await self.client.get_available_models()
-                    from prompt_toolkit.shortcuts import radiolist_dialog
-                    choices = [(m, m) for m in models]
-                    selected_model = await radiolist_dialog(
-                        title="NVIDIA NIM Models",
-                        text="Select a model for code generation:",
-                        values=choices
-                    ).run_async()
-                    
-                    if selected_model:
-                        self.client.model = selected_model
-                        self.model = selected_model
-                        save_global_setting("model", selected_model)
-                        console.print(f"[bold green]Model changed to: {selected_model}[/bold green]")
-                    else:
-                        console.print("[yellow]Model selection cancelled.[/yellow]")
+                    try:
+                        models = await self.client.get_available_models()
+                        if not models:
+                            console.print("[red]No models returned from API.[/red]")
+                            continue
+                            
+                        from rich.table import Table
+                        from rich.prompt import Prompt
+                        
+                        table = Table(title="🤖 Available NVIDIA NIM Models", show_header=True, header_style="bold magenta")
+                        table.add_column("ID", style="cyan", width=4)
+                        table.add_column("Model Name", style="white")
+                        
+                        for idx, m in enumerate(models, 1):
+                            table.add_row(str(idx), m)
+                            
+                        console.print(table)
+                        
+                        choice = Prompt.ask("Select a model by ID (or press Enter to cancel)", choices=[str(i) for i in range(1, len(models) + 1)] + [""], default="")
+                        
+                        if choice:
+                            selected_model = models[int(choice) - 1]
+                            self.client.model = selected_model
+                            self.model = selected_model
+                            save_global_setting("model", selected_model)
+                            console.print(f"[bold green]Model changed to: {selected_model}[/bold green]")
+                        else:
+                            console.print("[yellow]Model selection cancelled.[/yellow]")
+                    except Exception as e:
+                        console.print(f"[bold red]Failed to fetch models: {e}[/bold red]")
                     continue
                 elif user_input.strip() == "/commit":
                     import subprocess
@@ -937,7 +980,7 @@ class NimcodeREPL:
                     continue
                 elif user_input.strip().startswith("/"):
                     import difflib
-                    valid_commands = ["/help", "/plan", "/code", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile"]
+                    valid_commands = ["/help", "/plan", "/code", "/trust", "/untrust", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile"]
                     cmd_name = user_input.strip().split()[0]
                     matches = difflib.get_close_matches(cmd_name, valid_commands, n=1, cutoff=0.5)
                     if matches:

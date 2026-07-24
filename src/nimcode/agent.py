@@ -333,23 +333,29 @@ class Agent:
                             file_path = tool_call.get("args", {}).get("file_path", "")
                             if file_path.endswith(".py"):
                                 import subprocess
-                                subprocess.run(["black", "-q", file_path], capture_output=True)
-                                lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True)
-                                if lint.returncode != 0:
-                                    import sys
-                                    if sys.stdin.isatty():
-                                        from rich.prompt import Confirm
-                                        c.print(f"\n[bold yellow]Linter found errors in {file_path}:[/bold yellow]\n{lint.stdout}")
-                                        if Confirm.ask("Would you like to auto-fix these errors?"):
-                                            result += f"\n\nAuto-Linter found errors:\n{lint.stdout}\nPlease fix them."
-                                            c.print(f"[bold red]Auto-fixing...[/bold red]")
+                                try:
+                                    subprocess.run(["black", "-q", file_path], capture_output=True)
+                                    lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True)
+                                    if lint.returncode != 0:
+                                        import sys
+                                        if sys.stdin.isatty():
+                                            from rich.prompt import Confirm
+                                            c.print(f"\n[bold yellow]Linter found errors in {file_path}:[/bold yellow]\n{lint.stdout}")
+                                            if Confirm.ask("Would you like to auto-fix these errors?"):
+                                                result += f"\n\nAuto-Linter found errors:\n{lint.stdout}\nPlease fix them."
+                                                c.print(f"[bold red]Auto-fixing...[/bold red]")
+                                            else:
+                                                c.print("[dim]Ignoring linter errors.[/dim]")
                                         else:
-                                            c.print("[dim]Ignoring linter errors.[/dim]")
-                                    else:
-                                        result += f"\n\nAuto-Linter found errors:\n{lint.stdout}\nPlease fix them."
+                                            result += f"\n\nAuto-Linter found errors:\n{lint.stdout}\nPlease fix them."
+                                except Exception as e:
+                                    pass
                             elif file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
                                 import subprocess
-                                subprocess.run(["npx", "prettier", "--write", file_path], capture_output=True)
+                                try:
+                                    subprocess.run(["npx", "prettier", "--write", file_path], capture_output=True)
+                                except Exception:
+                                    pass
                 except KeyboardInterrupt:
                     c.print("\n[yellow]Tool execution interrupted by user.[/yellow]")
                     result = "Tool execution was interrupted by the user via Ctrl+C. Ask the user what to do next."
