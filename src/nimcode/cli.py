@@ -101,7 +101,6 @@ def main():
     if not model and not args.stdio:
         from rich.prompt import Prompt
         from .nim_client import NimClient
-        import asyncio
         client = NimClient(api_key=final_key)
         console.print("[yellow]Fetching available models from NVIDIA NIM...[/yellow]")
         models = asyncio.run(client.get_available_models())
