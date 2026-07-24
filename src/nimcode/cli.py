@@ -14,15 +14,20 @@ def run_login():
     console.print("Get your API key from [bold underline blue]https://build.nvidia.com/[/bold underline blue]")
     
     import getpass
-    import keyring
+    from .config import save_global_setting
     
-    api_key = getpass.getpass("Enter your NVIDIA NIM API Key: ")
+    try:
+        api_key = getpass.getpass("Enter your NVIDIA NIM API Key: ")
+    except (EOFError, Exception):
+        console.print("[red]Could not prompt for API key. Please set NIM_API_KEY environment variable or run 'nimcode login' in a regular terminal.[/red]")
+        sys.exit(1)
+        
     if not api_key.strip():
         console.print("[red]API Key cannot be empty.[/red]")
         return
         
-    keyring.set_password("nimcode", "api_key", api_key.strip())
-    console.print("[green][OK] API Key saved securely to OS Keyring[/green]")
+    save_global_setting("api_key", api_key.strip())
+    console.print("[green][OK] API Key saved securely to settings[/green]")
 
 def run_doctor():
     console.print("[bold cyan]NimCode Doctor[/bold cyan] - Diagnostics")
@@ -69,7 +74,7 @@ def main():
         elif sys.argv[1] == "install-hook":
             install_hook()
             return
-        elif sys.argv[1] == "login":
+        elif sys.argv[1] == "login" or sys.argv[1] == "/login":
             run_login()
             return
         
@@ -86,13 +91,12 @@ def main():
     
     settings = load_settings()
     
-    import keyring
-    final_key = args.api_key or os.environ.get("NIM_API_KEY") or keyring.get_password("nimcode", "api_key") or settings.get("api_key")
+    final_key = args.api_key or os.environ.get("NIM_API_KEY") or settings.get("api_key")
     if not final_key:
         console.print("[yellow]No API Key found. Let's get you set up![/yellow]")
         run_login()
         settings = load_settings()
-        final_key = keyring.get_password("nimcode", "api_key") or settings.get("api_key")
+        final_key = settings.get("api_key")
         if not final_key:
             console.print("[bold red]API Key is required to use NimCode. Exiting.[/bold red]")
             sys.exit(1)
