@@ -189,11 +189,7 @@ async def test_start_repl_commands(agent):
                 # Mock run to avoid actually executing queries
                 agent.run = AsyncMock()
                 
-                class MockDialog:
-                    async def run_async(self):
-                        return "model1"
-
-                with patch("prompt_toolkit.shortcuts.radiolist_dialog", return_value=MockDialog()):
+                with patch("rich.prompt.Prompt.ask", return_value="1"):
                     try:
                         from nimcode.repl import NimcodeREPL
                         repl = NimcodeREPL(agent)
