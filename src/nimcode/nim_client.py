@@ -90,31 +90,56 @@ class NimClient:
             "stream": stream
         }
         
-        async with httpx.AsyncClient() as client:
+        max_retries = 6
+        base_delay = 2.0
+        
+        for attempt in range(max_retries):
+            chunk_yielded = False
             try:
-                async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=60.0) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: ") and line != "data: [DONE]":
-                            data_str = line[6:]
-                            try:
-                                data_json = json.loads(data_str)
-                                chunk = data_json["choices"][0]["delta"].get("content", "")
-                                if chunk:
-                                    yield chunk
-                            except json.JSONDecodeError:
-                                pass
+                async with httpx.AsyncClient() as client:
+                    async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=60.0) as response:
+                        if response.status_code in [408, 429, 500, 502, 503, 504, 529]:
+                            raise httpx.HTTPStatusError(f"Temporary server error {response.status_code}", request=response.request, response=response)
+                        
+                        response.raise_for_status()
+                        
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: ") and line != "data: [DONE]":
+                                data_str = line[6:]
+                                try:
+                                    data_json = json.loads(data_str)
+                                    chunk = data_json["choices"][0]["delta"].get("content", "")
+                                    if chunk:
+                                        chunk_yielded = True
+                                        yield chunk
+                                except json.JSONDecodeError:
+                                    pass
+                        return  # Success
             except httpx.HTTPStatusError as e:
-                try:
-                    await e.response.aread()
-                    text = e.response.text
-                except Exception:
-                    text = "<unread stream>"
-                logger.error(f"API HTTP error: {e.response.status_code} - {text}")
-                yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your NVIDIA API key.]"
+                transient_codes = [408, 429, 500, 502, 503, 504, 529]
+                if e.response.status_code not in transient_codes or chunk_yielded or attempt == max_retries - 1:
+                    try:
+                        await e.response.aread()
+                        text = e.response.text
+                    except Exception:
+                        text = "<unread stream>"
+                    logger.error(f"API HTTP error: {e.response.status_code} - {text}")
+                    yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your API key if 401.]"
+                    return
+                    
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"API HTTP error {e.response.status_code}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                
             except Exception as e:
-                logger.error(f"API connection error: {e}")
-                yield f"\n\n[Error communicating with NVIDIA API: {e}]"
+                if chunk_yielded or attempt == max_retries - 1:
+                    logger.error(f"API connection error: {type(e).__name__} - {e}")
+                    yield f"\n\n[Error communicating with NVIDIA API: {type(e).__name__} - {e}]"
+                    return
+                    
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"API connection error: {type(e).__name__} - {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
 
     def count_tokens_approx(self, messages: List[Dict[str, Any]]) -> int:
         total_chars = 0
