@@ -543,12 +543,10 @@ class NimcodeREPL:
                     self.messages.append({"role": "system", "content": "You are now in coding mode. You may use all available tools."})
                     continue
                 elif user_input.strip() == "/trust":
-                    from nimcode.permissions import PermissionMode
                     self.agent.permission_engine.mode = PermissionMode.BYPASS
                     console.print("[bold red]🚨 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission! 🚨[/bold red]")
                     continue
                 elif user_input.strip() == "/untrust":
-                    from nimcode.permissions import PermissionMode
                     self.agent.permission_engine.mode = PermissionMode.DEFAULT
                     console.print("[bold green]🛡️ Trust mode disabled. NimCode will ask for permission again.[/bold green]")
                     continue
