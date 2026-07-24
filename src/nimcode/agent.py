@@ -334,8 +334,8 @@ class Agent:
                             if file_path.endswith(".py"):
                                 import subprocess
                                 try:
-                                    subprocess.run(["black", "-q", file_path], capture_output=True)
-                                    lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True)
+                                    subprocess.run(["black", "-q", file_path], capture_output=True, timeout=10)
+                                    lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True, timeout=10)
                                     if lint.returncode != 0:
                                         import sys
                                         if sys.stdin.isatty():
@@ -353,7 +353,7 @@ class Agent:
                             elif file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
                                 import subprocess
                                 try:
-                                    subprocess.run(["npx", "prettier", "--write", file_path], capture_output=True)
+                                    subprocess.run(["npx", "--yes", "prettier", "--write", file_path], capture_output=True, timeout=10)
                                 except Exception:
                                     pass
                 except KeyboardInterrupt:
