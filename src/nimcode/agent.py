@@ -53,7 +53,12 @@ class Agent:
         self.settings = load_settings()
         self.model = model or self.settings.get("model", "meta/llama-3.1-70b-instruct")
         api_base_url = self.settings.get("api_base_url", "https://integrate.api.nvidia.com/v1")
-        self.client = NimClient(api_key=api_key, base_url=api_base_url, model=self.model)
+        self.client = NimClient(
+            api_key=api_key, 
+            base_url=api_base_url, 
+            model=self.model,
+            timeout=self.settings.get("timeout_llm", 120.0)
+        )
         
         # Initialize MCP Manager
         self.mcp = MCPManager(self.settings)
@@ -338,8 +343,10 @@ class Agent:
                             if file_path.endswith(".py"):
                                 import subprocess
                                 try:
-                                    subprocess.run(["black", "-q", file_path], capture_output=True, timeout=10)
-                                    lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True, timeout=10)
+                                    t_fmt = self.settings.get("timeout_format", 10)
+                                    t_fmt = None if t_fmt == 0 else t_fmt
+                                    subprocess.run(["black", "-q", file_path], capture_output=True, timeout=t_fmt)
+                                    lint = subprocess.run(["flake8", "--select=E9,F821,F822,F823", file_path], capture_output=True, text=True, timeout=t_fmt)
                                     if lint.returncode != 0:
                                         import sys
                                         if sys.stdin.isatty():
@@ -357,7 +364,9 @@ class Agent:
                             elif file_path.endswith((".js", ".ts", ".jsx", ".tsx")):
                                 import subprocess
                                 try:
-                                    subprocess.run(["npx", "--yes", "prettier", "--write", file_path], capture_output=True, timeout=10)
+                                    t_fmt = self.settings.get("timeout_format", 10)
+                                    t_fmt = None if t_fmt == 0 else t_fmt
+                                    subprocess.run(["npx", "--yes", "prettier", "--write", file_path], capture_output=True, timeout=t_fmt)
                                 except Exception:
                                     pass
                 except KeyboardInterrupt:

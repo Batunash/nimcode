@@ -121,6 +121,20 @@ NimCode creates a `.nimcode` directory inside your projects. This directory acts
 - `.nimcode/skills/`: Any custom guidelines, framework rules, or memories you teach the agent.
 - `.nimcode/history/`: File backups for `/undo` capabilities.
 
+### Advanced Configuration (Timeouts)
+
+NimCode's limits and timeouts can be customized through the `.nimcode/settings.json` file. Setting any timeout to `0` will completely disable it (infinite timeout).
+
+```json
+{
+    "timeout_command": 1200,    // Max time for bash commands (in seconds)
+    "timeout_llm": 120,         // Max time for LLM API responses (in seconds)
+    "timeout_format": 10,       // Max time for auto-formatters like black/prettier
+    "timeout_browser": 15000,   // Max time for browser operations (in milliseconds)
+    "timeout_updater": 3        // Max time for update checks
+}
+```
+
 ## 🛡️ Requirements
 
 - Python 3.8+

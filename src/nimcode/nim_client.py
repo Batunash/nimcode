@@ -8,10 +8,11 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 logger = logging.getLogger(__name__)
 
 class NimClient:
-    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.1-70b-instruct"):
+    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.1-70b-instruct", timeout: float = 120.0):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.timeout = None if timeout == 0 else timeout
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -39,7 +40,7 @@ class NimClient:
                 f"{self.base_url}/chat/completions",
                 headers=self.headers,
                 json=payload,
-                timeout=60.0
+                timeout=self.timeout
             )
             response.raise_for_status()
             data = response.json()
@@ -70,7 +71,7 @@ class NimClient:
                     f"{self.base_url}/chat/completions",
                     headers=self.headers,
                     json=payload,
-                    timeout=60.0
+                    timeout=self.timeout
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -98,7 +99,7 @@ class NimClient:
             chunk_yielded = False
             try:
                 async with httpx.AsyncClient() as client:
-                    async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=120.0) as response:
+                    async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=self.timeout) as response:
                         if response.status_code in [408, 429, 500, 502, 503, 504, 529]:
                             raise httpx.HTTPStatusError(f"Temporary server error {response.status_code}", request=response.request, response=response)
                         

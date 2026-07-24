@@ -239,6 +239,8 @@ class ToolRegistry:
             return f"Started task '{task_id}' in the background. Check logs at {log_file}. Use /tasks to manage."
             
         try:
+            t_cmd = settings.get("timeout_command", 1200)
+            t_cmd = None if t_cmd == 0 else t_cmd
             result = subprocess.run(
                 command,
                 shell=True,
@@ -246,7 +248,7 @@ class ToolRegistry:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=1200
+                timeout=t_cmd
             )
             out = result.stdout + "\n" + result.stderr
             out = out.strip()
@@ -257,7 +259,7 @@ class ToolRegistry:
             
             return out if out else "Command executed successfully with no output."
         except subprocess.TimeoutExpired:
-            return "Error: Command timed out after 1200 seconds."
+            return f"Error: Command timed out after {t_cmd} seconds."
         except Exception as e:
             return f"Error running bash: {e}"
 
@@ -565,11 +567,16 @@ class ToolRegistry:
         try:
             from playwright.sync_api import sync_playwright
             import base64
+            from .config import load_settings
+            
+            settings = load_settings()
+            t_browser = settings.get("timeout_browser", 15000)
+            t_browser = 0 if t_browser == 0 else t_browser
             
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(url, wait_until="networkidle", timeout=15000)
+                page.goto(url, wait_until="networkidle", timeout=t_browser)
                 
                 screenshot_bytes = page.screenshot(type="jpeg", quality=50)
                 b64_img = base64.b64encode(screenshot_bytes).decode('utf-8')

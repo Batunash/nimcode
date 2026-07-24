@@ -10,7 +10,12 @@ def load_settings() -> Dict[str, Any]:
     settings = {
         "model": "meta/llama-3.1-70b-instruct",
         "api_base_url": "https://integrate.api.nvidia.com/v1",
-        "mcp_servers": {}
+        "mcp_servers": {},
+        "timeout_command": 1200,    # Timeout for bash commands (seconds)
+        "timeout_llm": 120,         # Timeout for LLM API calls (seconds)
+        "timeout_format": 10,       # Timeout for formatting/linting tools (seconds)
+        "timeout_browser": 15000,   # Timeout for browser actions (milliseconds)
+        "timeout_updater": 3        # Timeout for update checks (seconds)
     }
     
     # Global settings

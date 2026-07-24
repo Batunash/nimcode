@@ -13,7 +13,12 @@ class AutoUpdater:
         Returns the latest version string if > CURRENT_VERSION, else None.
         """
         try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            from .config import load_settings
+            settings = load_settings()
+            t_upd = settings.get("timeout_updater", 3.0)
+            t_upd = None if t_upd == 0 else t_upd
+            
+            async with httpx.AsyncClient(timeout=t_upd) as client:
                 response = await client.get("https://pypi.org/pypi/nimcode/json")
                 if response.status_code == 200:
                     data = response.json()
