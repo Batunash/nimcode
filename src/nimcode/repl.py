@@ -59,7 +59,10 @@ class NimcodeREPL:
     @property
     def settings(self):
         return self.agent.settings
-        
+
+    @property
+    def analytics(self):
+        return self.agent.analytics
 
 
     @property
@@ -77,6 +80,10 @@ class NimcodeREPL:
         # Connect MCPs before REPL
         if hasattr(self.agent.mcp, "connect_all"):
             await self.agent.mcp.connect_all()
+            
+        # Load Plugins
+        from .plugin_manager import PluginManager
+        self.plugin_manager = PluginManager()
         
         history_path = os.path.join(os.getcwd(), ".nimcode", "history")
         if not os.path.exists(os.path.dirname(history_path)):
@@ -85,6 +92,16 @@ class NimcodeREPL:
         session = PromptSession(history=FileHistory(history_path))
 
         console = Console()
+        
+        self.update_available = None
+        async def check_update():
+            from .updater import AutoUpdater
+            latest = await AutoUpdater.check_for_update()
+            if latest:
+                self.update_available = latest
+        
+        import asyncio
+        asyncio.create_task(check_update())
         
         # --- Project Trust Check ---
         cwd = os.getcwd()
@@ -234,15 +251,17 @@ class NimcodeREPL:
                 bar = "█" * filled + "░" * (10 - filled)
                 goal_ui = f" | Goal: [{bar}] {pct}% "
                 
+            update_str = f" | Update Available: v{self.update_available} (Type /update)" if getattr(self, 'update_available', None) else ""
+                
             return [
                 ('class:toolbar_title', ' NimCode '),
-                ('class:toolbar_text', f' Model: {self.model} | Mode: {mode} | Tokens: {tokens} | Cost: ${cost:.4f} | Effort: {effort}{goal_ui}'),
+                ('class:toolbar_text', f' Model: {self.model} | Mode: {mode} | Tokens: {tokens} | Cost: ${cost:.4f} | Effort: {effort}{goal_ui}{update_str}'),
                 ('class:toolbar_shortcut', ' [Alt+Enter] multiline '),
             ]
         from prompt_toolkit.completion import Completer, Completion, PathCompleter
         
         class SlashCompleter(Completer):
-            def __init__(self):
+            def __init__(self, plugin_commands=[]):
                 self.commands = [
                     '/help', '/plan', '/code', '/models', '/theme', '/clear', '/compact', 
                     '/commit', '/fix', '/testgen', '/vision', '/voice', '/index', '/exit', 
@@ -252,6 +271,8 @@ class NimcodeREPL:
                     '/permissions', '/graph', '/guardian', '/thinkback', '/autofix-pr', 
                     '/terraform-god', '/sql-tune', '/decompile'
                 ]
+                # Add dynamic plugin commands
+                self.commands.extend([f"/{cmd}" for cmd in plugin_commands])
                 self.subcommands = {
                     '/theme': ['monokai', 'dracula', 'nord', 'github'],
                     '/effort': ['Low', 'Medium', 'High'],
@@ -292,7 +313,7 @@ class NimcodeREPL:
                     elif cmd in ['/testgen', '/add', '/teleport', '/decompile']:
                         yield from self.path_completer.get_completions(document, complete_event)
 
-        command_completer = SlashCompleter()
+        command_completer = SlashCompleter(self.plugin_manager.get_command_names())
         
         from prompt_toolkit.lexers import PygmentsLexer
         from pygments.lexers.shell import BashLexer
@@ -308,11 +329,16 @@ class NimcodeREPL:
             auto_suggest=AutoSuggestFromHistory()
         )
         
+        from .watcher import WorkspaceWatcher
+        watcher = WorkspaceWatcher(self.agent, os.getcwd())
+        watcher.start()
+        
         while True:
             try:
                 user_input = await session.prompt_async("❯ ")
                 if user_input.lower() in ["/exit", "/quit"]:
                     self.agent.save_history()
+                    watcher.stop()
                     break
                 elif user_input.strip() == "/help":
                     from rich.table import Table
@@ -341,6 +367,13 @@ class NimcodeREPL:
                     table.add_row("/voice", "Speak to NimCode (records for 5 seconds)")
                     table.add_row("/index", "Index project files for Semantic Search")
                     table.add_row("/exit", "Exit NimCode")
+                    
+                    # Add plugin commands to help
+                    plugin_cmds = self.plugin_manager.get_command_names()
+                    if plugin_cmds:
+                        table.add_row("---", "---")
+                        for pcmd in plugin_cmds:
+                            table.add_row(f"/{pcmd}", "(Plugin Command)")
                     
                     console.print(table)
                     continue
@@ -385,31 +418,12 @@ class NimcodeREPL:
                     console.print("[yellow]Context compacted.[/yellow]")
                     continue
                 elif user_input.strip() == "/undo":
-                    import json
-                    import shutil
-                    history_dir = os.path.join(os.getcwd(), ".nimcode", "history")
-                    index_path = os.path.join(history_dir, "index.json")
-                    if not os.path.exists(index_path):
-                        console.print("[yellow]No undo history found.[/yellow]")
-                        continue
-                    try:
-                        with open(index_path, "r") as f:
-                            index = json.load(f)
-                        if not index:
-                            console.print("[yellow]No undo history found.[/yellow]")
-                            continue
-                        last = index.pop()
-                        backup_path = os.path.join(history_dir, last["backup_file"])
-                        original_path = os.path.join(os.getcwd(), last["original_path"])
-                        if os.path.exists(backup_path):
-                            shutil.copy2(backup_path, original_path)
-                            with open(index_path, "w") as f:
-                                json.dump(index, f)
-                            console.print(f"[bold green]✨ Restored {last['original_path']} to previous state.[/bold green]")
-                        else:
-                            console.print("[red]Backup file not found on disk.[/red]")
-                    except Exception as e:
-                        console.print(f"[red]Failed to undo: {e}[/red]")
+                    from .tools import ToolRegistry
+                    result = ToolRegistry._execute_undo(os.getcwd())
+                    if result.startswith("Successfully"):
+                        console.print(f"[bold green]✨ {result}[/bold green]")
+                    else:
+                        console.print(f"[bold red]{result}[/bold red]")
                     continue
                 elif user_input.strip() == "/plan":
                     console.print("[bold blue]Entering Plan mode.[/bold blue] Mutating tools will be denied by default.")
@@ -554,11 +568,13 @@ class NimcodeREPL:
                     continue
                 elif user_input.strip() == "/trust":
                     self.agent.permission_engine.mode = PermissionMode.BYPASS
-                    console.print("[bold red]🚨 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission! 🚨[/bold red]")
+                    self.agent.max_turns = 999999  # Effectively infinite for autonomous looping
+                    console.print("[bold red]🚨 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission and has NO TURN LIMIT! 🚨[/bold red]")
                     continue
                 elif user_input.strip() == "/untrust":
                     self.agent.permission_engine.mode = PermissionMode.DEFAULT
-                    console.print("[bold green]🛡️ Trust mode disabled. NimCode will ask for permission again.[/bold green]")
+                    self.agent.max_turns = self.settings.get("max_turns", 30)
+                    console.print("[bold green]🛡️ Trust mode disabled. NimCode will ask for permission and turn limits are restored.[/bold green]")
                     continue
                 elif user_input.strip().startswith("/theme"):
                     parts = user_input.strip().split()
@@ -589,8 +605,72 @@ class NimcodeREPL:
                         else:
                             console.print("[yellow]Theme selection cancelled.[/yellow]")
                     continue
-                elif user_input.strip() == "/models":
-                    console.print("[bold yellow]Fetching available models from NVIDIA NIM...[/bold yellow]")
+                elif user_input.strip() == "/sandbox":
+                    current = self.settings.get("sandbox_mode", False)
+                    new_val = not current
+                    self.settings["sandbox_mode"] = new_val
+                    save_global_setting("sandbox_mode", new_val)
+                    if new_val:
+                        console.print("[bold green]🛡️ Docker Sandbox Mode ENABLED.[/bold green] Bash commands will run in an isolated container.")
+                    else:
+                        console.print("[bold yellow]⚠️ Docker Sandbox Mode DISABLED.[/bold yellow] Bash commands will run natively on the host.")
+                    continue
+                elif user_input.strip() == "/cost":
+                    summary = self.analytics.get_summary()
+                    table = Table(title="💰 API Cost & Usage Summary")
+                    table.add_column("Period", justify="left", style="cyan", no_wrap=True)
+                    table.add_column("Prompt Tokens", justify="right", style="magenta")
+                    table.add_column("Completion Tokens", justify="right", style="green")
+                    table.add_column("Cost (USD)", justify="right", style="yellow")
+                    
+                    t_day = summary["today"]
+                    t_tot = summary["total"]
+                    
+                    table.add_row("Today", f"{t_day['prompt_tokens']:,}", f"{t_day['completion_tokens']:,}", f"${t_day['cost_usd']:.4f}")
+                    table.add_row("All Time", f"{t_tot['prompt_tokens']:,}", f"{t_tot['completion_tokens']:,}", f"${t_tot['cost_usd']:.4f}")
+                    
+                    console.print(table)
+                    continue
+                elif user_input.strip() == "/effort":
+                    summary = self.analytics.get_summary()
+                    t_tot = summary["total"]
+                    total_tokens = t_tot['prompt_tokens'] + t_tot['completion_tokens']
+                    
+                    # Heuristics for effort saved
+                    # Assume 1 human keystroke = 0.5s, 1 token ~ 4 keystrokes
+                    human_seconds = total_tokens * 4 * 0.5
+                    hours_saved = human_seconds / 3600
+                    
+                    table = Table(title="🚀 ROI & Effort Saved")
+                    table.add_column("Metric", style="cyan")
+                    table.add_column("Value", style="green")
+                    
+                    table.add_row("Total AI Tokens Generated", f"{total_tokens:,}")
+                    table.add_row("Est. Human Keystrokes", f"{total_tokens * 4:,}")
+                    table.add_row("Est. Time Saved (Hours)", f"{hours_saved:.1f} hrs")
+                    
+                    if hours_saved > 40:
+                        table.add_row("Milestone", "🎉 You saved a full work week!")
+                        
+                    console.print(table)
+                    continue
+                elif user_input.strip().startswith("/models"):
+                    args = user_input.split()[1:]
+                    if args and args[0] == "local":
+                        base_url = args[1] if len(args) > 1 else "http://localhost:11434/v1"
+                        self.client.is_local = True
+                        self.client.base_url = base_url
+                        save_global_setting("is_local", True)
+                        save_global_setting("base_url", base_url)
+                        console.print(f"[bold green]Switched to LOCAL models (Base URL: {base_url})[/bold green]")
+                    elif args and args[0] == "nim":
+                        self.client.is_local = False
+                        self.client.base_url = "https://integrate.api.nvidia.com/v1"
+                        save_global_setting("is_local", False)
+                        save_global_setting("base_url", "https://integrate.api.nvidia.com/v1")
+                        console.print("[bold green]Switched to NVIDIA NIM models[/bold green]")
+                        
+                    console.print(f"[bold yellow]Fetching available models...[/bold yellow]")
                     try:
                         models = await self.client.get_available_models()
                         if not models:
@@ -600,7 +680,7 @@ class NimcodeREPL:
                         from rich.table import Table
                         from rich.prompt import Prompt
                         
-                        table = Table(title="🤖 Available NVIDIA NIM Models", show_header=True, header_style="bold magenta")
+                        table = Table(title="🤖 Available Models", show_header=True, header_style="bold magenta")
                         table.add_column("ID", style="cyan", width=4)
                         table.add_column("Model Name", style="white")
                         
@@ -655,6 +735,7 @@ class NimcodeREPL:
                     console.print(f"\n[bold green]✅ Sub-agent '{role}' finished with result:[/bold green]\n{result}")
                     self.messages.append({"role": "system", "content": f"Sub-agent '{role}' completed the task '{task}' and returned:\n{result}"})
                     continue
+                elif user_input.strip() == "/testgen":
                     if not os.path.exists(".git"):
                         console.print("[red]Not a git repository.[/red]")
                         continue
@@ -752,33 +833,8 @@ class NimcodeREPL:
                     # Reload skills into prompt
                     self.messages[0]["content"] += f"\n\n--- SKILL: {safe_topic}.md ---\n{skill_content}\n"
                     continue
-                elif user_input.strip() == "/cost":
-                    from rich.table import Table
-                    from rich.box import ROUNDED
-                    table = Table(title="[bold green]NimCode Session Cost[/bold green]", box=ROUNDED, header_style="bold cyan")
-                    table.add_column("Metric", style="white")
-                    table.add_column("Value", style="yellow", justify="right")
-                    
-                    tokens = getattr(self, "session_tokens", 0)
-                    est_usd = (tokens / 1000000) * 3.0
-                    table.add_row("Total Output Tokens (est)", f"{tokens:,}")
-                    table.add_row("Estimated USD Cost", f"${est_usd:.4f}")
-                    table.add_row("Active Model", self.model)
-                    table.add_row("Effort Level", self.settings.get("effort", "Medium"))
-                    console.print(table)
-                    continue
-                elif user_input.strip().startswith("/effort"):
-                    parts = user_input.strip().split()
-                    if len(parts) > 1 and parts[1].title() in ["Low", "Medium", "High"]:
-                        level = parts[1].title()
-                        self.settings["effort"] = level
-                        save_global_setting("effort", level)
-                        console.print(f"[bold green]✓ Effort level set to {level}[/bold green]")
-                        if level == "High":
-                            console.print("[dim]Agent will do deeper planning and verification.[/dim]")
-                    else:
-                        console.print("[yellow]Usage: /effort [Low|Medium|High][/yellow]")
-                    continue
+
+
                 elif user_input.strip() == "/thinking":
                     current = self.settings.get("show_thinking", True)
                     self.settings["show_thinking"] = not current
@@ -813,6 +869,58 @@ class NimcodeREPL:
                     else:
                         self.messages = [self.messages[0]]
                         console.print("[bold green]⏪ Rewound to beginning.[/bold green]")
+                    continue
+                elif user_input.strip().startswith("/tasks"):
+                    from .tools import ToolRegistry
+                    parts = user_input.strip().split()
+                    if len(parts) == 1 or parts[1] == "list":
+                        tasks = ToolRegistry._BACKGROUND_TASKS
+                        if not tasks:
+                            console.print("[dim]No active background tasks.[/dim]")
+                        else:
+                            from rich.table import Table
+                            table = Table(title="Background Tasks")
+                            table.add_column("Task ID", style="cyan")
+                            table.add_column("Command", style="green")
+                            table.add_column("Status", style="yellow")
+                            
+                            for tid, info in tasks.items():
+                                proc = info["process"]
+                                status = "Running" if proc.poll() is None else f"Exited ({proc.returncode})"
+                                table.add_row(tid, info["command"], status)
+                            console.print(table)
+                    elif len(parts) == 3 and parts[1] == "kill":
+                        tid = parts[2]
+                        tasks = ToolRegistry._BACKGROUND_TASKS
+                        if tid in tasks:
+                            proc = tasks[tid]["process"]
+                            if proc.poll() is None:
+                                proc.terminate()
+                                console.print(f"[bold green]Task {tid} terminated.[/bold green]")
+                            else:
+                                console.print(f"[yellow]Task {tid} already exited.[/yellow]")
+                        else:
+                            console.print(f"[red]Task {tid} not found.[/red]")
+                    elif len(parts) == 3 and parts[1] == "logs":
+                        tid = parts[2]
+                        tasks = ToolRegistry._BACKGROUND_TASKS
+                        if tid in tasks:
+                            log_file = tasks[tid]["log_file"]
+                            if os.path.exists(log_file):
+                                try:
+                                    with open(log_file, "r", encoding="utf-8") as f:
+                                        content = f.read()
+                                        if len(content) > 2000:
+                                            content = "...[TRUNCATED]...\n" + content[-2000:]
+                                    console.print(f"[bold cyan]Logs for {tid}:[/bold cyan]\n{content}")
+                                except Exception as e:
+                                    console.print(f"[red]Error reading logs: {e}[/red]")
+                            else:
+                                console.print(f"[red]Log file not found.[/red]")
+                        else:
+                            console.print(f"[red]Task {tid} not found.[/red]")
+                    else:
+                        console.print("[yellow]Usage: /tasks [list | kill <id> | logs <id>][/yellow]")
                     continue
                 elif user_input.strip() == "/fork":
                     import subprocess
@@ -942,29 +1050,21 @@ class NimcodeREPL:
                     task = user_input.split("/swarm ", 1)[1].strip()
                     console.print(f"[bold magenta]🐝 Spawning Swarm for task: {task}[/bold magenta]")
                     
-                    async def run_swarm(task_query):
-                        from .agent import NimAgent
-                        planner = NimAgent(self.client.api_key, self.client.model)
-                        coder = NimAgent(self.client.api_key, self.client.model)
-                        reviewer = NimAgent(self.client.api_key, self.client.model)
-                        
-                        planner.messages[0]["content"] = "You are the Swarm Planner. Break down the user's task into concrete steps. Do NOT use tools. Just return the plan."
-                        coder.messages[0]["content"] = "You are the Swarm Coder. Execute the plan provided using your tools. Write the code."
-                        reviewer.messages[0]["content"] = "You are the Swarm Reviewer. Review the code written by the Coder. Use ReadFile tools to check their work. Return 'APPROVED' if good, or list errors."
-                        
-                        console.print("[dim]Planner is thinking...[/dim]")
-                        plan = await planner.run_headless(f"Task: {task_query}", max_turns=2)
-                        console.print(f"[bold blue]Plan created:[/bold blue]\n{plan}")
-                        
-                        console.print("[dim]Coder is executing...[/dim]")
-                        await coder.run_headless(f"Execute this plan:\n{plan}", max_turns=7)
-                        
-                        console.print("[dim]Reviewer is checking...[/dim]")
-                        review = await reviewer.run_headless(f"Review the implementation for this plan:\n{plan}", max_turns=3)
-                        
-                        console.print(f"\n[bold magenta]🐝 Swarm Finished![/bold magenta]\n[bold]Review:[/bold]\n{review}")
-                        
-                    asyncio.create_task(run_swarm(task))
+                    async def run_swarm_coord(task_query):
+                        try:
+                            from .swarm import SwarmCoordinator
+                            coordinator = SwarmCoordinator(
+                                api_key=self.client.api_key, 
+                                model=self.client.model,
+                                base_url=getattr(self.client, 'base_url', None),
+                                is_local=getattr(self.client, 'is_local', False)
+                            )
+                            result = await coordinator.run_swarm(task_query)
+                            console.print(f"\n[bold magenta]🐝 Swarm Finished![/bold magenta]\n{result}")
+                        except Exception as e:
+                            console.print(f"[bold red]Swarm error: {e}[/bold red]")
+                            
+                    asyncio.create_task(run_swarm_coord(task))
                     continue
                 elif user_input.strip().startswith("/tdd "):
                     feature = user_input.split("/tdd ", 1)[1].strip()
@@ -983,10 +1083,70 @@ class NimcodeREPL:
                         
                     asyncio.create_task(run_tdd(feature))
                     continue
+                elif user_input.strip().startswith("/grill-me "):
+                    feature = user_input.split("/grill-me ", 1)[1].strip()
+                    console.print(f"[bold yellow]🕵️  Grill-Me Mode Activated for: {feature}[/bold yellow]")
+                    console.print("[dim]The agent will now ask you 3 clarifying questions before proceeding.[/dim]")
+                    
+                    async def run_grill_me(feat):
+                        from .agent import NimAgent
+                        grill_agent = NimAgent(self.client.api_key, self.client.model)
+                        grill_agent.client.is_local = getattr(self.client, 'is_local', False)
+                        grill_agent.client.base_url = getattr(self.client, 'base_url', None)
+                        
+                        prompt = f"The user wants to build: {feat}. Ask exactly 1 highly critical architectural/design question to clarify ambiguous requirements. Do NOT write any code yet. Just ask the question."
+                        
+                        for i in range(1, 4):
+                            question = await grill_agent.run_headless(prompt, max_turns=1)
+                            from rich.prompt import Prompt
+                            console.print(f"\n[bold magenta]Question {i}/3:[/bold magenta] {question}")
+                            answer = Prompt.ask("[bold cyan]Your answer[/bold cyan]")
+                            prompt = f"The user answered: {answer}. If you have more questions up to a total of 3, ask the next one now. If this is question 3, summarize the final requirements."
+                            
+                        console.print("\n[bold green]✅ Grill-Me Complete! You can now use these requirements for /plan or normal chat.[/bold green]")
+                        
+                    asyncio.create_task(run_grill_me(feature))
+                    continue
+                elif user_input.strip() == "/update":
+                    if not getattr(self, 'update_available', None):
+                        console.print("[yellow]You are already on the latest version![/yellow]")
+                    else:
+                        console.print(f"[bold green]Upgrading nimcode to {self.update_available}...[/bold green]")
+                        import subprocess
+                        import sys
+                        try:
+                            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "nimcode"])
+                            console.print("[bold green]Update successful! Please restart NimCode.[/bold green]")
+                            return
+                        except subprocess.CalledProcessError as e:
+                            console.print(f"[bold red]Update failed: {e}[/bold red]")
+                    continue
+                elif user_input.strip() == "/undo":
+                    from .tools import ToolRegistry
+                    import os
+                    result = ToolRegistry._execute_undo(os.getcwd())
+                    if "Successfully" in result:
+                        console.print(f"[bold green]✅ {result}[/bold green]")
+                    else:
+                        console.print(f"[bold red]❌ {result}[/bold red]")
+                    continue
                 elif user_input.strip().startswith("/"):
                     import difflib
-                    valid_commands = ["/help", "/plan", "/code", "/trust", "/untrust", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile"]
-                    cmd_name = user_input.strip().split()[0]
+                    valid_commands = ["/help", "/plan", "/code", "/trust", "/untrust", "/models", "/theme", "/clear", "/compact", "/commit", "/fix", "/exit", "/quit", "/config", "/alias", "/add", "/rewind", "/fork", "/testgen", "/vision", "/voice", "/index", "/research", "/mcp install", "/swarm", "/tdd", "/learn", "/cost", "/effort", "/thinking", "/grill-me", "/update", "/undo", "/teleport", "/buddy", "/ultraplan", "/bughunter", "/security-review", "/doctor", "/permissions", "/graph", "/guardian", "/thinkback", "/autofix-pr", "/terraform-god", "/sql-tune", "/decompile", "/sandbox"]
+                    valid_commands.extend([f"/{cmd}" for cmd in self.plugin_manager.get_command_names()])
+                    
+                    cmd_parts = user_input.strip().split(" ", 1)
+                    cmd_name = cmd_parts[0]
+                    cmd_args = cmd_parts[1] if len(cmd_parts) > 1 else ""
+                    
+                    # Check if it's a plugin command
+                    plugin_cmd_name = cmd_name.lstrip("/")
+                    if plugin_cmd_name in self.plugin_manager.get_command_names():
+                        result = self.plugin_manager.execute_command(plugin_cmd_name, cmd_args, self.agent)
+                        if result:
+                            console.print(result)
+                        continue
+
                     matches = difflib.get_close_matches(cmd_name, valid_commands, n=1, cutoff=0.5)
                     if matches:
                         console.print(f"[yellow]Unknown command '{cmd_name}'. Did you mean [bold cyan]{matches[0]}[/bold cyan]?[/yellow]")
@@ -1010,5 +1170,5 @@ class NimcodeREPL:
                 console.print("\n[bold yellow]⚠ Operation cancelled by user. (Press Ctrl+D to exit)[/bold yellow]")
                 continue
             except EOFError:
+                watcher.stop()
                 break
-
