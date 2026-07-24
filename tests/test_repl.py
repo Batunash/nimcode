@@ -84,6 +84,7 @@ async def test_stream_response_success(agent):
         yield "Hello"
         yield " World"
     agent.client.chat = mock_chat_generator
+    agent.client.count_tokens_approx = lambda msgs: 10
     
     res = await agent._stream_response()
     assert res == "Hello World"
