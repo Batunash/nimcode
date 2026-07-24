@@ -22,9 +22,11 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
   },
   "devDependencies": {
+    "vsce": "^2.15.0",
     "@types/vscode": "^1.80.0",
     "@types/node": "18.x",
     "typescript": "^5.1.3"
