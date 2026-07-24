@@ -132,8 +132,13 @@ def main():
 
     piped_input = None
     if not sys.stdin.isatty():
-        piped_input = sys.stdin.read().strip()
-        
+        import select
+        try:
+            # On Unix, we can check if stdin has data ready to read
+            if sys.platform != "win32" and select.select([sys.stdin], [], [], 0.0)[0]:
+                piped_input = sys.stdin.read().strip()
+        except Exception:
+            pass
     if piped_input:
         console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
         prompt = f"{piped_input}\n\n{args.prompt or ''}".strip()
