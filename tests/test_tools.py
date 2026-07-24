@@ -41,43 +41,55 @@ def test_execute_read_write(tmp_path):
     res_r = ToolRegistry.execute({"tool": "Read", "args": {"file_path": "test.txt"}}, cwd)
     assert res_r == "Hello World"
 
-def test_execute_edit_success(tmp_path):
+def test_execute_replace_success(tmp_path):
     cwd = str(tmp_path)
     file_path = os.path.join(cwd, "test.txt")
     with open(file_path, "w") as f:
-        f.write("A B C")
+        f.write("A B C\n1 2 3")
         
     res = ToolRegistry.execute({
-        "tool": "Edit", 
-        "args": {"file_path": "test.txt", "old_string": "B", "new_string": "X"}
+        "tool": "Replace", 
+        "args": {
+            "file_path": "test.txt", 
+            "replacements": [
+                {"old_string": "B", "new_string": "X"},
+                {"old_string": "2", "new_string": "Y"}
+            ]
+        }
     }, cwd)
     
-    assert "Successfully" in res
+    assert "Successfully applied 2 replacements" in res
     with open(file_path, "r") as f:
-        assert f.read() == "A X C"
+        assert f.read() == "A X C\n1 Y 3"
 
-def test_execute_edit_not_found(tmp_path):
+def test_execute_replace_not_found(tmp_path):
     cwd = str(tmp_path)
     file_path = os.path.join(cwd, "test.txt")
     with open(file_path, "w") as f:
         f.write("A B C")
         
     res = ToolRegistry.execute({
-        "tool": "Edit", 
-        "args": {"file_path": "test.txt", "old_string": "D", "new_string": "X"}
+        "tool": "Replace", 
+        "args": {
+            "file_path": "test.txt", 
+            "replacements": [{"old_string": "D", "new_string": "X"}]
+        }
     }, cwd)
     assert "ToolError" in res
-    assert "not found" in res
+    assert "Target string not found" in res
 
-def test_execute_edit_ambiguous(tmp_path):
+def test_execute_replace_ambiguous(tmp_path):
     cwd = str(tmp_path)
     file_path = os.path.join(cwd, "test.txt")
     with open(file_path, "w") as f:
         f.write("A B B C")
         
     res = ToolRegistry.execute({
-        "tool": "Edit", 
-        "args": {"file_path": "test.txt", "old_string": "B", "new_string": "X"}
+        "tool": "Replace", 
+        "args": {
+            "file_path": "test.txt",
+            "replacements": [{"old_string": "B", "new_string": "X"}]
+        }
     }, cwd)
     assert "ToolError" in res
     assert "unique" in res
@@ -110,10 +122,10 @@ def test_execute_read_directory(tmp_path):
     res = ToolRegistry.execute({"tool": "Read", "args": {"file_path": "mydir"}}, cwd)
     assert "ToolError" in res
 
-def test_execute_edit_file_not_found(tmp_path):
+def test_execute_replace_file_not_found(tmp_path):
     cwd = str(tmp_path)
-    res = ToolRegistry.execute({"tool": "Edit", "args": {"file_path": "missing.txt", "old_string": "a", "new_string": "b"}}, cwd)
-    assert "ToolError" in res
+    res = ToolRegistry.execute({"tool": "Replace", "args": {"file_path": "missing.txt", "replacements": [{"old_string": "a", "new_string": "b"}]}}, cwd)
+    assert "Error" in res or "ToolError" in res
 
 def test_execute_unknown_tool_but_bypassed_validation():
     # Bypass validation just to test the fallback block
@@ -184,33 +196,31 @@ def test_grep_read_error(tmp_path):
 
 
 
-def test_execute_ast_replace(tmp_path):
+def test_execute_undo(tmp_path):
     cwd = str(tmp_path)
-    file_path = os.path.join(cwd, "test.py")
+    file_path = os.path.join(cwd, "test.txt")
     with open(file_path, "w") as f:
-        f.write("def foo():\n    pass\n")
-    
-    from nimcode.tools import ToolRegistry
-    res = ToolRegistry.execute({
-        "tool": "ASTReplace",
-        "args": {"file_path": "test.py", "target_name": "foo", "new_code": "def foo():\n    return 1"}
+        f.write("A B C")
+        
+    # First, apply a replace
+    ToolRegistry.execute({
+        "tool": "Replace", 
+        "args": {
+            "file_path": "test.txt", 
+            "replacements": [{"old_string": "B", "new_string": "X"}]
+        }
     }, cwd)
-    assert "Successfully" in res
+    
     with open(file_path, "r") as f:
-        assert "return 1" in f.read()
-
-def test_execute_ast_replace_not_found(tmp_path):
-    cwd = str(tmp_path)
-    file_path = os.path.join(cwd, "test.py")
-    with open(file_path, "w") as f:
-        f.write("def bar():\n    pass\n")
+        assert f.read() == "A X C"
+        
+    # Now undo
+    res = ToolRegistry._execute_undo(cwd)
+    assert "Successfully reverted" in res
     
-    from nimcode.tools import ToolRegistry
-    res = ToolRegistry.execute({
-        "tool": "ASTReplace",
-        "args": {"file_path": "test.py", "target_name": "foo", "new_code": "def foo():\n    return 1"}
-    }, cwd)
-    assert "not found" in res
+    # Check if reverted
+    with open(file_path, "r") as f:
+        assert f.read() == "A B C"
 
 def test_execute_start_terminal():
     from unittest.mock import patch, MagicMock

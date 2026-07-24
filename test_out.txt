@@ -1,0 +1,676 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.2, pytest-9.0.3, pluggy-1.6.0
+rootdir: C:\Users\batu.DESKTOP-IQT2FP8\Desktop\Dev\Projects\nimcode
+plugins: anyio-4.13.0, asyncio-1.4.0, cov-7.1.0, respx-0.23.1, typeguard-4.5.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 24 items / 23 deselected / 1 selected
+
+tests\test_repl.py F                                                     [100%]
+
+================================== FAILURES ===================================
+__________________________ test_start_repl_commands ___________________________
+
+agent = <nimcode.agent.Agent object at 0x000002770DD5FCB0>
+
+    @pytest.mark.asyncio
+    async def test_start_repl_commands(agent):
+        agent.mcp = MagicMock()
+        agent.mcp.connect_all = AsyncMock()
+    
+        # We will feed all commands one by one, then /exit
+        commands = [
+            "/help",
+            "/models",
+            "/compact",
+            "/clear",
+            "/history",
+            "/save",
+            "/load",
+            "/tokens",
+            "/config",
+            "/theme monokai",
+            "/theme",
+            "/code",
+            "/grill-me",
+            "/decompile target",
+            "/sql-tune",
+            "/terraform-god",
+            "/autofix-pr",
+            "/thinkback",
+            "/guardian",
+            "/graph",
+            "/review",
+            "/commit",
+            "/undo",
+            "/plan",
+            "/teleport target",
+            "/teleport",
+            "/buddy",
+            "/ultraplan",
+            "/bughunter",
+            "/security-review",
+            "/doctor",
+            "/swarm",
+            "/tdd",
+            "/research",
+            "/mcp install xxx",
+            "/cost",
+            "/effort High",
+            "/thinking",
+            "/testgen",
+            "/vision",
+            "/voice",
+            "/index",
+            "/fix",
+            "/rewind",
+            "/fork",
+            "/permissions bypass",
+            "/permissions auto",
+            "/permissions default",
+            "/permissions",
+            "dummy_command",
+            "/exit"
+        ]
+    
+        with patch("prompt_toolkit.PromptSession") as MockSession:
+            mock_session = MockSession.return_value
+            mock_session.prompt_async = AsyncMock(side_effect=commands)
+    
+            with patch("nimcode.agent.Agent._distill_memory", new_callable=AsyncMock) as mock_distill:
+                mock_distill.return_value = []
+                with patch("builtins.input", return_value="n"): # not trust project initially to trigger prompt
+                    # Mock get_available_models to avoid TypeError
+                    agent.client.get_available_models = AsyncMock(return_value=["model1", "model2"])
+                    # Mock run to avoid actually executing queries
+                    agent.run = AsyncMock()
+    
+                    with patch("rich.prompt.Prompt.ask", return_value="1"):
+                        try:
+                            from nimcode.repl import NimcodeREPL
+                            repl = NimcodeREPL(agent)
+>                           await repl.start_repl()
+
+tests\test_repl.py:197: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <nimcode.repl.NimcodeREPL object at 0x000002770EE923C0>
+
+    async def start_repl(self) -> None:
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.history import FileHistory
+        import os
+        from prompt_toolkit.styles import Style
+        from rich.console import Console
+        from rich.panel import Panel
+    
+        # Connect MCPs before REPL
+        if hasattr(self.agent.mcp, "connect_all"):
+            await self.agent.mcp.connect_all()
+    
+        # Load Plugins
+        from .plugin_manager import PluginManager
+        self.plugin_manager = PluginManager()
+    
+        history_path = os.path.join(os.getcwd(), ".nimcode", "history")
+        if not os.path.exists(os.path.dirname(history_path)):
+            os.makedirs(os.path.dirname(history_path), exist_ok=True)
+    
+        session = PromptSession(history=FileHistory(history_path))
+    
+        console = Console()
+    
+        self.update_available = None
+        async def check_update():
+            from .updater import AutoUpdater
+            latest = await AutoUpdater.check_for_update()
+            if latest:
+                self.update_available = latest
+    
+        import asyncio
+        asyncio.create_task(check_update())
+    
+        # --- Project Trust Check ---
+        cwd = os.getcwd()
+        trusted_projects = self.settings.get("trusted_projects", [])
+        if cwd not in trusted_projects:
+            console.print("\nQuick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source project, or work from your team). If not, take a moment to review what's in this folder first.\n")
+            console.print("NimCode'll be able to read, edit, and execute files here.\n")
+            console.print("[dim]Security guide[/dim]\n")
+            try:
+                ans = input("> 1. Yes, I trust this folder (y/n) [y]: ").strip().lower()
+                if not ans or ans == 'y' or ans == '1' or ans == 'yes':
+                    trusted_projects.append(cwd)
+                    self.settings["trusted_projects"] = trusted_projects
+                    save_global_setting("trusted_projects", trusted_projects)
+                    self.permission_engine.mode = PermissionMode.BYPASS
+                    console.print("[green]\u221a Folder trusted.[/green]\\n")
+                else:
+                    console.print("[yellow]Folder not trusted. Prompts will be required.[/yellow]\n")
+            except (EOFError, KeyboardInterrupt):
+                pass
+        else:
+            self.permission_engine.mode = PermissionMode.BYPASS
+    
+        # Build Dashboard Splash
+        from rich.table import Table
+        from rich.box import ROUNDED
+    
+        table = Table(box=None, show_header=False, expand=True, padding=(0, 2))
+        table.add_column("Left", justify="center", ratio=1)
+        table.add_column("Right", ratio=2)
+    
+        logo = (
+            "[bold green]   \u2588\u2588\u2588\u2557   \u2588\u2588\u2557   [/bold green]\\n"
+            "[bold green]   \u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551   [/bold green]\\n"
+            "[bold green]   \u2588\u2588\u2554\u2588\u2588\u2557 \u2588\u2588\u2551   [/bold green]\\n"
+            "[bold green]   \u2588\u2588\u2551\u255a\u2588\u2588\u2557\u2588\u2588\u2551   [/bold green]\\n"
+            "[bold green]   \u2588\u2588\u2551 \u255a\u2588\u2588\u2588\u2588\u2551   [/bold green]\\n"
+            "[bold green]   \u255a\u2550\u255d  \u255a\u2550\u2550\u2550\u255d   [/bold green]"
+        )
+    
+        import os
+        import subprocess
+        import shutil
+    
+        cwd_short = os.getcwd()
+        if len(cwd_short) > 40:
+            cwd_short = "..." + cwd_short[-37:]
+    
+        try:
+            branch = subprocess.check_output(["git", "branch", "--show-current"], stderr=subprocess.DEVNULL).decode().strip()
+            branch_info = f" [green]({branch})[/green]"
+        except Exception:
+            branch_info = ""
+    
+        try:
+            _, _, free = shutil.disk_usage(os.getcwd())
+            disk_gb = free // (2**30)
+            disk_info = f"\n[dim]Disk Free: {disk_gb} GB[/dim]"
+        except Exception:
+            disk_info = ""
+    
+        try:
+            import coverage
+            cov = coverage.Coverage()
+            cov.load()
+            import sys, os
+            # We must suppress the report output
+            with open(os.devnull, 'w') as f:
+                total_cov = cov.report(file=f)
+            bar_len = 10
+            filled = int(bar_len * (total_cov / 100))
+            bar = "\u2588" * filled + "\u2591" * (bar_len - filled)
+    
+            # Determine color based on coverage
+            cov_color = "red" if total_cov < 50 else "yellow" if total_cov < 80 else "green"
+            coverage_info = f"\n[dim]Test Coverage:[/dim] [{cov_color}][{bar}] {total_cov:.1f}%[/{cov_color}]"
+        except Exception:
+            coverage_info = ""
+    
+        left_content = f"\n[bold white]Welcome back![/bold white]\n\n{logo}\n\n[dim]{self.model}[/dim]\n[dim]{cwd_short}{branch_info}[/dim]{disk_info}{coverage_info}"
+    
+        # Play a subtle startup sound if on Windows
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_OK)
+        except Exception:
+            pass
+    
+        right_content = "[bold orange3]Tips for getting started[/bold orange3]\nRun [cyan]/help[/cyan] to see available commands and shortcuts.\nUse [cyan]/models[/cyan] to change the current model.\n\n[bold orange3]What's new[/bold orange3]\nò Added native multiline REPL support (Alt+Enter for newline).\nò Polished UI to match Claude Code experience.\nò More robust JSON parsing for tools."
+    
+        table.add_row(left_content, right_content)
+        panel = Panel(table, title="[bold orange3]NimCode v3.0.0[/bold orange3]", border_style="orange3", box=ROUNDED, title_align="left")
+        console.print(panel)
+        console.print()
+    
+        style = Style.from_dict({
+            'prompt': '#00ffff bold',
+            'bottom-toolbar': '#999999 bg:#1e1e1e',
+            'toolbar_title': '#ffffff bg:#5c2d91 bold',
+            'toolbar_text': '#cccccc bg:#1e1e1e',
+            'toolbar_shortcut': '#888888 bg:#2d2d2d',
+    
+            # Claude Code inspired Autocompletion Menu
+            'completion-menu': 'bg:#2b2b2b #eeeeee',
+            'completion-menu.completion': 'bg:#2b2b2b #eeeeee',
+            'completion-menu.completion.current': 'bg:#5c2d91 #ffffff bold',
+            'scrollbar.background': 'bg:#1e1e1e',
+            'scrollbar.button': 'bg:#5c2d91',
+    
+            # Auto-suggestion (greyed out ghost text)
+            'auto-suggestion': '#666666 italic',
+        })
+    
+        from prompt_toolkit.key_binding import KeyBindings
+        from prompt_toolkit.keys import Keys
+    
+        kb = KeyBindings()
+    
+        @kb.add(Keys.Enter)
+        def _(event):
+            event.current_buffer.validate_and_handle()
+    
+        @kb.add(Keys.Escape, Keys.Enter)
+        def _(event):
+            event.current_buffer.insert_text('\n')
+    
+        @kb.add('c-p')
+        def _(event):
+            event.current_buffer.text = '/plan'
+            event.current_buffer.validate_and_handle()
+    
+        @kb.add('c-g')
+        def _(event):
+            event.current_buffer.text = '/guardian'
+            event.current_buffer.validate_and_handle()
+    
+        def bottom_toolbar():
+            tokens = getattr(self, 'session_tokens', 0)
+            cost = (tokens / 1000000) * 3.0
+            mode = self.permission_engine.mode.value
+            effort = getattr(self, 'effort', 'Medium')
+    
+            goal_ui = ""
+            if getattr(self, 'goal_total_steps', 0) > 0:
+                pct = int((getattr(self, 'goal_current_step', 0) / getattr(self, 'goal_total_steps', 1)) * 100)
+                filled = int(10 * (pct / 100))
+                bar = "\u2588" * filled + "\u2591" * (10 - filled)
+                goal_ui = f" | Goal: [{bar}] {pct}% "
+    
+            update_str = f" | Update Available: v{self.update_available} (Type /update)" if getattr(self, 'update_available', None) else ""
+    
+            return [
+                ('class:toolbar_title', ' NimCode '),
+                ('class:toolbar_text', f' Model: {self.model} | Mode: {mode} | Tokens: {tokens} | Cost: ${cost:.4f} | Effort: {effort}{goal_ui}{update_str}'),
+                ('class:toolbar_shortcut', ' [Alt+Enter] multiline '),
+            ]
+        from prompt_toolkit.completion import Completer, Completion, PathCompleter
+    
+        class SlashCompleter(Completer):
+            def __init__(self, plugin_commands=[]):
+                self.commands = [
+                    '/help', '/plan', '/code', '/models', '/theme', '/clear', '/compact',
+                    '/commit', '/fix', '/testgen', '/vision', '/voice', '/index', '/exit',
+                    '/quit', '/learn', '/cost', '/effort', '/thinking', '/add', '/research',
+                    '/swarm', '/tdd', '/mcp', '/rewind', '/fork', '/grill-me', '/teleport',
+                    '/buddy', '/ultraplan', '/bughunter', '/security-review', '/doctor',
+                    '/permissions', '/graph', '/guardian', '/thinkback', '/autofix-pr',
+                    '/terraform-god', '/sql-tune', '/decompile'
+                ]
+                # Add dynamic plugin commands
+                self.commands.extend([f"/{cmd}" for cmd in plugin_commands])
+                self.subcommands = {
+                    '/theme': ['monokai', 'dracula', 'nord', 'github'],
+                    '/effort': ['Low', 'Medium', 'High'],
+                    '/mcp': ['install'],
+                    '/permissions': ['auto', 'bypass', 'default']
+                }
+                self.path_completer = PathCompleter()
+    
+            def get_completions(self, document, complete_event):
+                text = document.text_before_cursor
+                parts = text.split()
+    
+                if not parts:
+                    return
+    
+                if len(parts) == 1 or (len(parts) == 2 and text.endswith(' ')):
+                    if not text.endswith(' '):
+                        word = parts[0]
+                        for c in self.commands:
+                            if c.startswith(word):
+                                yield Completion(c, start_position=-len(word))
+                    else:
+                        cmd = parts[0]
+                        if cmd in self.subcommands:
+                            for sub in self.subcommands[cmd]:
+                                yield Completion(sub, start_position=0)
+                        elif cmd in ['/testgen', '/add', '/teleport', '/decompile']:
+                            yield from self.path_completer.get_completions(document, complete_event)
+    
+                elif len(parts) >= 2:
+                    cmd = parts[0]
+                    word = parts[-1] if not text.endswith(' ') else ''
+    
+                    if cmd in self.subcommands:
+                        for sub in self.subcommands[cmd]:
+                            if sub.startswith(word):
+                                yield Completion(sub, start_position=-len(word))
+                    elif cmd in ['/testgen', '/add', '/teleport', '/decompile']:
+                        yield from self.path_completer.get_completions(document, complete_event)
+    
+        command_completer = SlashCompleter(self.plugin_manager.get_command_names())
+    
+        from prompt_toolkit.lexers import PygmentsLexer
+        from pygments.lexers.shell import BashLexer
+        from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    
+        session = PromptSession(
+            style=style,
+            key_bindings=kb,
+            multiline=True,
+            bottom_toolbar=bottom_toolbar,
+            completer=command_completer,
+            lexer=PygmentsLexer(BashLexer),
+            auto_suggest=AutoSuggestFromHistory()
+        )
+    
+        from .watcher import WorkspaceWatcher
+        watcher = WorkspaceWatcher(self.agent, os.getcwd())
+        watcher.start()
+    
+        while True:
+            try:
+                user_input = await session.prompt_async("\u276f ")
+                if user_input.lower() in ["/exit", "/quit"]:
+                    self.agent.save_history()
+                    watcher.stop()
+                    break
+                elif user_input.strip() == "/help":
+                    from rich.table import Table
+                    table = Table(title="NimCode Commands", show_header=True, header_style="bold magenta")
+                    table.add_column("Command", style="cyan", width=15)
+                    table.add_column("Description", style="white")
+    
+                    table.add_row("/help", "Show this help menu")
+                    table.add_row("/plan", "Enter planning mode (safe mode)")
+                    table.add_row("/code", "Enter coding mode (all tools enabled)")
+                    table.add_row("/trust", "Enter trust mode (runs all tools without permission)")
+                    table.add_row("/untrust", "Disable trust mode (ask for permission)")
+                    table.add_row("/models", "Select NVIDIA NIM model")
+                    table.add_row("/theme <name>", "Change syntax theme (e.g., monokai)")
+                    table.add_row("/clear", "Clear current context history")
+                    table.add_row("/compact", "Compact context to save tokens")
+                    table.add_row("/commit", "Auto-generate git commit message")
+                    table.add_row("/map", "Generate semantic project architecture map")
+                    table.add_row("/context", "View and manage loaded context window")
+                    table.add_row("/undo", "Undo the last file edit made by Nimcode")
+                    table.add_row("/delegate <role> <task>", "Spawn a sub-agent to handle a task")
+                    table.add_row("/review", "Code review all unstaged git changes")
+                    table.add_row("/fix <cmd>", "Run command and fix errors automatically")
+                    table.add_row("/testgen <file>", "Generate 100% coverage tests for a file")
+                    table.add_row("/vision", "Capture screen and analyze with Vision AI")
+                    table.add_row("/voice", "Speak to NimCode (records for 5 seconds)")
+                    table.add_row("/index", "Index project files for Semantic Search")
+                    table.add_row("/exit", "Exit NimCode")
+    
+                    # Add plugin commands to help
+                    plugin_cmds = self.plugin_manager.get_command_names()
+                    if plugin_cmds:
+                        table.add_row("---", "---")
+                        for pcmd in plugin_cmds:
+                            table.add_row(f"/{pcmd}", "(Plugin Command)")
+    
+                    console.print(table)
+                    continue
+                elif user_input.strip().startswith("/theme"):
+                    parts = user_input.strip().split()
+                    if len(parts) > 1:
+                        new_theme = parts[1]
+                        self.settings["theme"] = new_theme
+                        save_global_setting("theme", new_theme)
+                        console.print(f"[bold green]\u2728 Theme changed to '{new_theme}'.[/bold green]")
+                    else:
+                        current = self.settings.get("theme", "monokai")
+                        console.print(f"[bold]Current theme:[/bold] {current}")
+                        console.print("[dim]Usage: /theme <theme_name>[/dim]")
+                    continue
+                elif user_input.strip() == "/clear":
+                    self.messages = [self.messages[0]]
+                    console.print("[yellow]Context cleared.[/yellow]")
+                    continue
+                elif user_input.strip() == "/context":
+                    from rich.table import Table
+                    ctx_table = Table(title="Loaded Context Window", show_header=True, header_style="bold cyan")
+                    ctx_table.add_column("Index", style="dim", width=5)
+                    ctx_table.add_column("Role", style="magenta", width=10)
+                    ctx_table.add_column("Content Snippet", style="white")
+                    ctx_table.add_column("Est. Tokens", justify="right", style="green", width=12)
+    
+                    total_tokens = 0
+                    for i, msg in enumerate(self.messages):
+                        content_str = str(msg.get("content", ""))
+                        snippet = content_str[:60].replace("\n", " ") + ("..." if len(content_str) > 60 else "")
+                        tokens = len(content_str) // 4
+                        total_tokens += tokens
+                        ctx_table.add_row(str(i), msg.get("role", "unknown"), snippet, f"{tokens:,}")
+    
+                    console.print(ctx_table)
+                    console.print(f"[bold]Total Context Size:[/bold] {total_tokens:,} tokens (Approx {(total_tokens/128000)*100:.1f}% of 128k limit)")
+                    console.print("[dim]Use /compact to compress history or /clear to reset.[/dim]")
+                    continue
+                elif user_input.strip() == "/compact":
+                    self.messages = self.memory.compact_context(self.messages)
+                    console.print("[yellow]Context compacted.[/yellow]")
+                    continue
+                elif user_input.strip() == "/undo":
+                    from .tools import ToolRegistry
+                    result = ToolRegistry._execute_undo(os.getcwd())
+                    if result.startswith("Successfully"):
+                        console.print(f"[bold green]\u2728 {result}[/bold green]")
+                    else:
+                        console.print(f"[bold red]{result}[/bold red]")
+                    continue
+                elif user_input.strip() == "/plan":
+                    console.print("[bold blue]Entering Plan mode.[/bold blue] Mutating tools will be denied by default.")
+                    self.permission_engine.mode = PermissionMode.DEFAULT
+                    self.messages.append({"role": "system", "content": "You are now in planning mode. Use Read tools to explore. Then use the Write tool to write a markdown plan file inside the '.nimcode/plans/' directory (e.g., '.nimcode/plans/feature_x_plan.md'). Do NOT use Bash or Edit tools."})
+                    continue
+                elif user_input.strip().startswith("/teleport"):
+                    parts = user_input.strip().split(" ", 1)
+                    if len(parts) > 1:
+                        target = parts[1].strip()
+                        try:
+                            os.chdir(target)
+                            console.print(f"[bold green]\u2728 Teleported context to: {os.getcwd()}[/bold green]")
+                        except Exception as e:
+                            console.print(f"[red]Teleport failed: {e}[/red]")
+                    else:
+                        console.print("[yellow]Usage: /teleport <path>[/yellow]")
+                    continue
+                elif user_input.strip().startswith("/buddy"):
+                    console.print("[bold blue]\U0001f916 Buddy spawned. It is now watching your context.[/bold blue]")
+                    self.messages.append({"role": "system", "content": "You are now operating in Buddy Mode. You should act as an observant pair programmer. Point out improvements proactively without making changes directly unless asked."})
+                    continue
+                elif user_input.strip().startswith("/ultraplan"):
+                    task = user_input[len("/ultraplan"):].strip()
+                    if not task:
+                        console.print("[yellow]Usage: /ultraplan <task>[/yellow]")
+                        continue
+                    console.print("[bold magenta]\U0001f9e0 Generating Ultraplan (Dependency Graph)...[/bold magenta]")
+                    self.messages.append({"role": "user", "content": f"Generate a master ultra-detailed, dependency-graphed execution plan for the following task. Ensure step-by-step logical isolation:\n\nTask: {task}"})
+                    user_input = task # Flow into the execution loop
+                elif user_input.strip() == "/map":
+                    console.print("[bold magenta]\U0001f5fa\ufe0f Generating Semantic Project Map...[/bold magenta]")
+                    import os
+                    from pathlib import Path
+    
+                    def generate_tree(dir_path, prefix=""):
+                        tree_str = ""
+                        path = Path(dir_path)
+                        items = sorted([p for p in path.iterdir() if p.name not in ['.git', '__pycache__', 'venv', 'node_modules', '.nimcode']], key=lambda x: (not x.is_dir(), x.name))
+    
+                        for i, item in enumerate(items):
+                            is_last = (i == len(items) - 1)
+                            connector = "\u2514\u2500\u2500 " if is_last else "\u251c\u2500\u2500 "
+                            tree_str += f"{prefix}{connector}{item.name}\n"
+                            if item.is_dir():
+                                extension = "    " if is_last else "\u2502   "
+                                tree_str += generate_tree(item, prefix + extension)
+                        return tree_str
+    
+                    raw_tree = generate_tree(os.getcwd())
+                    prompt = f"Analyze the following directory tree and add a very brief (1-line) semantic description next to each important file explaining what it does. Format the output back as a tree using rich text formatting (e.g. `\u251c\u2500\u2500 repl.py [dim]- main TUI loop[/dim]`). Only output the tree.\\n\\nTree:\\n{raw_tree}"
+    
+                    self.messages.append({"role": "user", "content": prompt})
+                    user_input = prompt # Flow into the execution loop
+                elif user_input.strip() == "/review":
+                    import subprocess
+                    console.print("[bold magenta]\U0001f50d Preparing Code Review...[/bold magenta]")
+                    diff_unstaged = subprocess.run(["git", "diff"], capture_output=True, text=True).stdout or ""
+                    diff_staged = subprocess.run(["git", "diff", "--staged"], capture_output=True, text=True).stdout or ""
+                    full_diff = diff_staged + "\n" + diff_unstaged
+                    if not full_diff.strip():
+                        console.print("[yellow]No git changes found to review.[/yellow]")
+                        continue
+    
+                    prompt = f"You are a Principal Software Engineer conducting a thorough code review. Please review the following git diff. Point out bugs, security issues, performance bottlenecks, and bad practices. Be brutal but constructive.\n\nDiff:\n{full_diff}"
+                    self.messages.append({"role": "user", "content": prompt})
+                    user_input = prompt # Flow into execution loop
+                elif user_input.strip().startswith("/bughunter"):
+                    console.print("[bold red]\U0001f41b BugHunter activated. Aggressive static analysis enabled.[/bold red]")
+                    self.messages.append({"role": "system", "content": "You are BugHunter. Analyze the codebase deeply. Look for subtle edge cases, off-by-one errors, race conditions, type misalignments, and memory leaks. Use the grep tool to find 'TODO' and 'FIXME' tags."})
+                    continue
+                elif user_input.strip() == "/security-review":
+                    console.print("[bold red]\U0001f6e1\ufe0f Initiating Security Review...[/bold red]")
+                    self.messages.append({"role": "user", "content": "Please perform a comprehensive security review of the project. Look for hardcoded secrets, injection vulnerabilities, path traversals, and insecure dependencies. Use SemanticSearch, Read, and Glob tools."})
+                    user_input = "Start the security review."
+                elif user_input.strip() == "/doctor":
+                    console.print("[bold cyan]\U0001fa7a Running Environment Doctor...[/bold cyan]")
+                    import platform, sys, os
+                    console.print(f"OS: {platform.system()} {platform.release()}")
+                    console.print(f"Python: {sys.version.split()[0]}")
+                    console.print(f"CWD: {os.getcwd()}")
+                    console.print(f"Model: {self.model}")
+                    console.print(f"MCP Servers: {len(self.agent.settings.get('mcp_servers', {}))}")
+                    console.print(f"Permissions: {self.permission_engine.mode.value}")
+                    self.messages.append({"role": "user", "content": "I just ran the /doctor command to diagnose the environment. Please use the Bash tool to verify the presence of git, docker, node, and python packages, and report back on my project's health."})
+                    user_input = "Analyze environment."
+                elif user_input.strip().startswith("/permissions"):
+                    parts = user_input.strip().split()
+                    if len(parts) > 1 and parts[1].lower() in ["auto", "bypass", "default"]:
+                        mode_str = parts[1].lower()
+                        self.permission_engine.mode = PermissionMode(mode_str)
+                        console.print(f"[bold green]\u2713 Permission mode set to: {mode_str}[/bold green]")
+                    else:
+                        console.print("[yellow]Usage: /permissions [auto|bypass|default][/yellow]")
+                    continue
+                elif user_input.strip() == "/graph":
+                    console.print("[bold magenta]\U0001f5fa\ufe0f Generating Architectural Map...[/bold magenta]")
+                    self.messages.append({"role": "user", "content": "Please run the ReadArchitecture tool on the root directory. Then, generate a detailed Mermaid graph representing the project's components and write it to '.nimcode/architecture.md'."})
+                    user_input = "Generate architecture graph."
+                elif user_input.strip() == "/guardian":
+                    console.print("[bold cyan]\U0001f6e1\ufe0f Application Guardian Activated.[/bold cyan] Agent is now aggressively protecting main branch.")
+                    self.messages.append({"role": "system", "content": "You are the Application Guardian. Your sole priority is preventing regressions. Before making any code changes, ensure you write a test first. If a user asks for a breaking change, warn them aggressively."})
+                    continue
+                elif user_input.strip() == "/thinkback":
+                    console.print("[bold blue]\u23ea Entering Agent Replay Mode (Thinkback)[/bold blue]")
+                    from rich.table import Table
+                    table = Table(title="Recent Agent Actions")
+                    table.add_column("Turn", style="cyan")
+                    table.add_column("Tokens", style="yellow")
+                    table.add_column("Tools Called", style="green")
+                    table.add_row("1", "450", "Read, Glob")
+                    table.add_row("2", "1200", "Bash, Write")
+                    table.add_row("3", "300", "StartTerminal")
+                    console.print(table)
+                    console.print("[dim]Note: Full replay logs are stored in .nimcode/logs/[/dim]")
+                    continue
+                elif user_input.strip() == "/autofix-pr":
+                    console.print("[bold green]\U0001f527 Pull Request Auto-Fixer...[/bold green]")
+                    self.messages.append({"role": "user", "content": "Use the Bash tool to run 'gh pr view --json url,body,comments,files' to analyze the current pull request. Then fix any issues mentioned in the PR comments."})
+                    user_input = "Fix PR issues."
+                elif user_input.strip() == "/terraform-god":
+                    console.print("[bold cyan]\u2601\ufe0f Terraform God Mode Activated[/bold cyan]")
+                    self.messages.append({"role": "user", "content": "I need you to auto-provision cloud infrastructure. Please generate best-practice Terraform code for a scalable, secure, and highly-available deployment based on my project's architecture."})
+                    user_input = "Write terraform code."
+                elif user_input.strip() == "/sql-tune":
+                    console.print("[bold yellow]\U0001f6e2\ufe0f Database Telepathy (SQL Auto-Tuning) Activated[/bold yellow]")
+                    self.messages.append({"role": "user", "content": "I need you to analyze my database queries for performance. Please use tools to find SQL queries in my code, analyze execution plans (if you can run EXPLAIN), and propose optimized rewrites with missing indexes."})
+                    user_input = "Tune SQL queries."
+                elif user_input.strip().startswith("/decompile"):
+                    target = user_input.split("/decompile", 1)[1].strip()
+                    console.print(f"[bold red]\U0001f52c Reverse Engineering Mode. Target: {target}[/bold red]")
+                    self.messages.append({"role": "user", "content": f"Please use the Bash tool to run 'objdump', 'strings', or 'radare2' on {target} and explain its control flow and any embedded secrets."})
+                    user_input = "Decompile binary."
+                elif user_input.strip() == "/grill-me":
+                    console.print("[bold red]\U0001f525 Entering Interrogation Mode. NimCode will now grill you about your code! \U0001f525[/bold red]")
+                    self.messages.append({"role": "user", "content": "I want to refine my design. Please use the 'AskQuestion' tool to interrogate me about edge cases, architecture, and requirements for what I'm currently working on."})
+                    # Do not continue, let it fall through to process the message and call the tool
+                    user_input = "Please start asking questions."
+                elif user_input.strip() == "/code":
+                    console.print("[bold magenta]Entering Code mode.[/bold magenta] Standard permissions restored.")
+                    self.messages.append({"role": "system", "content": "You are now in coding mode. You may use all available tools."})
+                    continue
+                elif user_input.strip() == "/trust":
+                    self.agent.permission_engine.mode = PermissionMode.BYPASS
+                    console.print("[bold red]\U0001f6a8 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission! \U0001f6a8[/bold red]")
+                    continue
+                elif user_input.strip() == "/untrust":
+                    self.agent.permission_engine.mode = PermissionMode.DEFAULT
+                    console.print("[bold green]\U0001f6e1\ufe0f Trust mode disabled. NimCode will ask for permission again.[/bold green]")
+                    continue
+                elif user_input.strip().startswith("/theme"):
+                    parts = user_input.strip().split()
+                    if len(parts) > 1:
+                        self.settings["theme"] = parts[1]
+                        save_global_setting("theme", parts[1])
+                        console.print(f"[green]Theme updated to '{parts[1]}'[/green]")
+                    else:
+                        from rich.table import Table
+                        from rich.prompt import Prompt
+    
+                        themes = ['monokai', 'dracula', 'nord', 'github']
+                        table = Table(title="\U0001f3a8 Available Syntax Themes", show_header=True, header_style="bold magenta")
+                        table.add_column("ID", style="cyan", width=4)
+                        table.add_column("Theme Name", style="white")
+    
+                        for idx, t in enumerate(themes, 1):
+                            table.add_row(str(idx), t)
+    
+                        console.print(table)
+    
+                        choice = Prompt.ask("Select a theme by ID", choices=[str(i) for i in range(1, len(themes) + 1)], default="1")
+                        if choice:
+                            selected_theme = themes[int(choice) - 1]
+                            self.settings["theme"] = selected_theme
+                            save_global_setting("theme", selected_theme)
+                            console.print(f"[green]Theme updated to '{selected_theme}'[/green]")
+                        else:
+                            console.print("[yellow]Theme selection cancelled.[/yellow]")
+                    continue
+                elif user_input.strip() == "/sandbox":
+                    current = self.settings.get("sandbox_mode", False)
+                    new_val = not current
+                    self.settings["sandbox_mode"] = new_val
+                    save_global_setting("sandbox_mode", new_val)
+                    if new_val:
+                        console.print("[bold green]\U0001f6e1\ufe0f Docker Sandbox Mode ENABLED.[/bold green] Bash commands will run in an isolated container.")
+                    else:
+                        console.print("[bold yellow]\u26a0\ufe0f Docker Sandbox Mode DISABLED.[/bold yellow] Bash commands will run natively on the host.")
+                    continue
+                elif user_input.strip() == "/cost":
+>                   summary = self.analytics.get_summary()
+                              ^^^^^^^^^^^^^^
+E                   AttributeError: 'NimcodeREPL' object has no attribute 'analytics'
+
+src\nimcode\repl.py:614: AttributeError
+---------------------------- Captured stdout call -----------------------------
+\u250c\u2500 NimCode v3.0.0 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502                            Tips for getting started                         \u2502\n\u2502       Welcome back!        Run /help to see available commands and          \u2502\n\u2502                            shortcuts.                                       \u2502\n\u2502          \u2588\u2588\u2588\u2557   \u2588\u2588\u2557        Use /models to change the current model.         \u2502\n\u2502          \u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2551                                                         \u2502\n\u2502          \u2588\u2588\u2554\u2588\u2588\u2557 \u2588\u2588\u2551        What's new                                       \u2502\n\u2502          \u2588\u2588\u2551\u255a\u2588\u2588\u2557\u2588\u2588\u2551        \u2022 Added native multiline REPL support            \u2502\n\u2502          \u2588\u2588\u2551 \u255a\u2588\u2588\u2588\u2588\u2551        (Alt+Enter for newline).                         \u2502\n\u2502          \u255a\u2550\u255d  \u255a\u2550\u2550\u2550\u255d        \u2022 Polished UI to match Claude Code experience.   \u2502\n\u2502                            \u2022 More robust JSON parsing for tools.            \u2502\n\u2502          model1                                                             \u2502\n\u2502   ...-IQT2FP8\\Desktop\\\u2026                                                     \u2502\n\u2502   (nimcode-fork-178488\u2026                                                     \u2502\n\u2502     Disk Free: 366 GB                                                       \u2502\n\u2502      Test Coverage:                                                         \u2502\n\u2502    [\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591] 54.7%                                                       \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\n\n                             NimCode Commands                             \n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 Command         \u2502 Description                                          \u2502\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502 /help           \u2502 Show this help menu                                  \u2502\n\u2502 /plan           \u2502 Enter planning mode (safe mode)                      \u2502\n\u2502 /code           \u2502 Enter coding mode (all tools enabled)                \u2502\n\u2502 /trust          \u2502 Enter trust mode (runs all tools without permission) \u2502\n\u2502 /untrust        \u2502 Disable trust mode (ask for permission)              \u2502\n\u2502 /models         \u2502 Select NVIDIA NIM model                              \u2502\n\u2502 /theme <name>   \u2502 Change syntax theme (e.g., monokai)                  \u2502\n\u2502 /clear          \u2502 Clear current context history                        \u2502\n\u2502 /compact        \u2502 Compact context to save tokens                       \u2502\n\u2502 /commit         \u2502 Auto-generate git commit message                     \u2502\n\u2502 /map            \u2502 Generate semantic project architecture map           \u2502\n\u2502 /context        \u2502 View and manage loaded context window                \u2502\n\u2502 /undo           \u2502 Undo the last file edit made by Nimcode              \u2502\n\u2502 /delegate       \u2502 Spawn a sub-agent to handle a task                   \u2502\n\u2502 <role> <task>   \u2502                                                      \u2502\n\u2502 /review         \u2502 Code review all unstaged git changes                 \u2502\n\u2502 /fix <cmd>      \u2502 Run command and fix errors automatically             \u2502\n\u2502 /testgen <file> \u2502 Generate 100% coverage tests for a file              \u2502\n\u2502 /vision         \u2502 Capture screen and analyze with Vision AI            \u2502\n\u2502 /voice          \u2502 Speak to NimCode (records for 5 seconds)             \u2502\n\u2502 /index          \u2502 Index project files for Semantic Search              \u2502\n\u2502 /exit           \u2502 Exit NimCode                                         \u2502\n\u2502 ---             \u2502 ---                                                  \u2502\n\u2502 /hello          \u2502 (Plugin Command)                                     \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\nFetching available models...\n \U0001f916 Available Models \n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 ID   \u2502 Model Name \u2502\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502 1    \u2502 model1     \u2502\n\u2502 2    \u2502 model2     \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\nModel changed to: model1\nContext compacted.\nContext cleared.\nUnknown command '/history'. Did you mean /vision?\nUnknown command '/save'. Did you mean /voice?\nUnknown command '/load'. Did you mean /add?\nUnknown command '/tokens'. Did you mean /models?\nUsage: /config set <key> <value>\n\u2728 Theme changed to 'monokai'.\nCurrent theme: monokai\nUsage: /theme <theme_name>\nEntering Code mode. Standard permissions restored.\n\U0001f525 Entering Interrogation Mode. NimCode will now grill you about your code! \U0001f525\n\x07\U0001f52c Reverse Engineering Mode. Target: target\n\x07\U0001f6e2\ufe0f Database Telepathy (SQL Auto-Tuning) Activated\n\x07\u2601\ufe0f Terraform God Mode Activated\n\x07\U0001f527 Pull Request Auto-Fixer...\n\x07\u23ea Entering Agent Replay Mode (Thinkback)\n      Recent Agent Actions       \n\u250c\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2510\n\u2502 Turn \u2502 Tokens \u2502 Tools Called  \u2502\n\u251c\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u253c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2524\n\u2502 1    \u2502 450    \u2502 Read, Glob    \u2502\n\u2502 2    \u2502 1200   \u2502 Bash, Write   \u2502\n\u2502 3    \u2502 300    \u2502 StartTerminal \u2502\n\u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518\nNote: Full replay logs are stored in .nimcode/logs/\n\U0001f6e1\ufe0f Application Guardian Activated. Agent is now aggressively protecting main \nbranch.\n\U0001f5fa\ufe0f Generating Architectural Map...\n\x07\U0001f50d Preparing Code Review...\nNo git changes found to review.\n\U0001f4dd Generating Commit Message...\nNo staged changes to commit. Use 'git add' first.\nError: No backup history found.\nEntering Plan mode. Mutating tools will be denied by default.\nTeleport failed: [WinError 2] Sistem belirtilen dosyay\u0131 bulam\u0131yor: 'target'\nUsage: /teleport <path>\n\U0001f916 Buddy spawned. It is now watching your context.\nUsage: /ultraplan <task>\n\U0001f41b BugHunter activated. Aggressive static analysis enabled.\n\U0001f6e1\ufe0f Initiating Security Review...\n\x07\U0001fa7a Running Environment Doctor...\nOS: Windows 11\nPython: 3.14.2\nCWD: C:\\Users\\batu.DESKTOP-IQT2FP8\\Desktop\\Dev\\Projects\\nimcode\nModel: model1\nMCP Servers: 2\nPermissions: default\n\x07Unknown command '/swarm'. Did you mean /swarm?\nUnknown command '/tdd'. Did you mean /tdd?\nPlease provide a research query. (e.g. /research how does auth work)\n\U0001f4e6 Installing MCP Server: xxx...\n\u2713 MCP xxx installed and connected!
+============================== warnings summary ===============================
+tests/test_repl.py::test_start_repl_commands
+  C:\Users\batu.DESKTOP-IQT2FP8\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\_pytest\threadexception.py:58: PytestUnhandledThreadExceptionWarning: Exception in thread Thread-3 (_readerthread)
+  
+  Traceback (most recent call last):
+    File "C:\Users\batu.DESKTOP-IQT2FP8\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1082, in _bootstrap_inner
+      self._context.run(self.run)
+      ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+    File "C:\Users\batu.DESKTOP-IQT2FP8\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1024, in run
+      self._target(*self._args, **self._kwargs)
+      ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    File "C:\Users\batu.DESKTOP-IQT2FP8\AppData\Local\Python\pythoncore-3.14-64\Lib\subprocess.py", line 1613, in _readerthread
+      buffer.append(fh.read())
+                    ~~~~~~~^^
+    File "C:\Users\batu.DESKTOP-IQT2FP8\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1254.py", line 23, in decode
+      return codecs.charmap_decode(input,self.errors,decoding_table)[0]
+             ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  UnicodeDecodeError: 'charmap' codec can't decode byte 0x8f in position 17387: character maps to <undefined>
+  
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+    warnings.warn(pytest.PytestUnhandledThreadExceptionWarning(msg))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_repl.py::test_start_repl_commands - AttributeError: 'Nimcod...
+================= 1 failed, 23 deselected, 1 warning in 1.09s =================

@@ -21,6 +21,20 @@ def load_settings() -> Dict[str, Any]:
                 settings.update(global_settings)
         except Exception as e:
             logger.error(f"Failed to load global settings: {e}")
+            
+    # Scrub legacy api_key if found to ensure it uses keyring
+    if "api_key" in settings:
+        import keyring
+        try:
+            if not keyring.get_password("nimcode", "api_key"):
+                keyring.set_password("nimcode", "api_key", settings["api_key"])
+            
+            # Remove from file
+            del settings["api_key"]
+            with open(global_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=4)
+        except Exception:
+            pass
 
     # Local settings
     local_path = os.path.join(os.getcwd(), ".nimcode", "settings.json")

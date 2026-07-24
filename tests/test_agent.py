@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
 from nimcode.agent import Agent
 from nimcode.permissions import PermissionMode
 import json
@@ -293,8 +293,9 @@ async def test_distill_memory_context_full(agent):
     
     # Fake large token count
     agent.memory.count_messages_tokens = MagicMock(return_value=5000)
-    agent.memory.max_tokens = 4000
-    agent._distill_memory = AsyncMock(return_value=[{"role": "system", "content": "Distilled"}])
-    
-    await agent.run("Hi")
-    assert agent.messages[0]["content"] == "Distilled"
+    with patch("nimcode.memory.MemoryManager.max_tokens", new_callable=PropertyMock) as mock_max:
+        mock_max.return_value = 4000
+        agent._distill_memory = AsyncMock(return_value=[{"role": "system", "content": "Distilled"}])
+        
+        await agent.run("Hi")
+        assert agent.messages[0]["content"] == "Distilled"

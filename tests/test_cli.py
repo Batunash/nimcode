@@ -6,10 +6,10 @@ from nimcode.cli import main, run_login, run_doctor, install_hook
 
 def test_run_login():
     with patch("getpass.getpass", return_value="my_key"):
-        with patch("nimcode.cli.save_global_setting") as mock_save:
+        with patch("keyring.set_password") as mock_save:
             with patch("nimcode.cli.console.print") as mock_print:
                 run_login()
-                mock_save.assert_called_with("api_key", "my_key")
+                mock_save.assert_called_with("nimcode", "api_key", "my_key")
                 
 def test_run_login_empty():
     with patch("getpass.getpass", return_value="   "):
@@ -73,13 +73,15 @@ def test_main_login():
             mock_log.assert_called_once()
 
 def test_main_no_key():
-    with patch("sys.argv", ["nimcode"]):
+    with patch("sys.argv", ["nimcode", "my prompt"]):
         with patch("nimcode.cli.load_settings", return_value={}):
             real_env_get = os.environ.get
             with patch("os.environ.get", side_effect=lambda k, d=None: None if k == "NIM_API_KEY" else real_env_get(k, d)):
                 with patch("nimcode.cli.run_login"):
-                    with pytest.raises(SystemExit):
-                        main()
+                    with patch("sys.stdin.isatty", return_value=True):
+                        with patch("keyring.get_password", return_value=None):
+                            with pytest.raises(SystemExit):
+                                main()
 
 def test_main_with_key():
     with patch("sys.argv", ["nimcode", "prompt task", "--api-key", "key"]):

@@ -46,18 +46,44 @@ class PermissionEngine:
             content = ""
             if tool_name == "Bash":
                 content = f"Command:\n{args.get('command')}"
-            elif tool_name == "Write":
-                content_lines = len(args.get('content', '').split('\n'))
-                content = f"File: [bold cyan]{args.get('file_path')}[/bold cyan]\nAction: Overwrite with [bold green]{content_lines} new lines[/bold green]"
-            elif tool_name in ["Edit", "ASTReplace"]:
+            elif tool_name in ["Edit", "ASTReplace", "Replace", "Write"]:
                 import difflib
                 import os
                 file_path = args.get('file_path', '')
+                cwd = os.getcwd() # Assumption: running in cwd
+                full_path = os.path.join(cwd, file_path)
                 
                 # Default to basic diff summary
                 diff_str = ""
                 
-                if tool_name == "Edit":
+                old_lines = []
+                if os.path.exists(full_path):
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            old_lines = f.readlines()
+                    except:
+                        pass
+                        
+                if tool_name == "Write":
+                    new_content = args.get('content', '')
+                    new_lines = new_content.splitlines(keepends=True)
+                    diff = list(difflib.unified_diff(old_lines, new_lines, fromfile=file_path, tofile=file_path))
+                    diff_str = "".join(diff)
+                elif tool_name == "Replace":
+                    replacements = args.get("replacements", [])
+                    try:
+                        with open(full_path, "r", encoding="utf-8") as f:
+                            new_content = f.read()
+                        for rep in replacements:
+                            old_s = rep.get("old_string", "")
+                            new_s = rep.get("new_string", "")
+                            new_content = new_content.replace(old_s, new_s, 1)
+                        new_lines = new_content.splitlines(keepends=True)
+                        diff = list(difflib.unified_diff(old_lines, new_lines, fromfile=file_path, tofile=file_path))
+                        diff_str = "".join(diff)
+                    except Exception:
+                        diff_str = "Could not compute diff for Replace."
+                elif tool_name == "Edit":
                     old_str = args.get('old_string', '')
                     new_str = args.get('new_string', '')
                     diff = list(difflib.unified_diff(old_str.splitlines(keepends=True), new_str.splitlines(keepends=True), fromfile=file_path, tofile=file_path))

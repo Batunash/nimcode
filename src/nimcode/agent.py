@@ -8,6 +8,7 @@ from .permissions import PermissionEngine, PermissionMode
 from .config import load_settings, save_global_setting
 from .mcp_client import MCPManager
 from .memory import MemoryManager
+from .analytics import AnalyticsEngine
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ Available Tools:
 - Bash: {"tool": "Bash", "args": {"command": "string"}}
 - Read: {"tool": "Read", "args": {"file_path": "string"}}
 - Write: {"tool": "Write", "args": {"file_path": "string", "content": "string"}}
-- Edit: {"tool": "Edit", "args": {"file_path": "string", "old_string": "string", "new_string": "string"}}
+- Replace: {"tool": "Replace", "args": {"file_path": "string", "replacements": [{"old_string": "exact old", "new_string": "exact new"}]}}
 - Glob: {"tool": "Glob", "args": {"pattern": "string"}}
 - Grep: {"tool": "Grep", "args": {"query": "string", "directory": "string"}}
 
@@ -48,17 +49,41 @@ When you have completely fulfilled the user's request and have no more tools to 
 """
 
 class Agent:
-    def __init__(self, api_key: str, model: str = None, max_turns: int = 30, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = 4000):
+    def __init__(self, api_key: str, model: str = None, max_turns: int = 30, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = 100000):
         # Load global settings
         self.settings = load_settings()
         self.model = model or self.settings.get("model", "meta/llama-3.1-70b-instruct")
-        self.client = NimClient(api_key=api_key, model=self.model)
+        self.is_local = self.settings.get("is_local", False)
+        self.base_url = self.settings.get("base_url", None)
+        self.client = NimClient(api_key=api_key, base_url=self.base_url, model=self.model, is_local=self.is_local)
         
         # Initialize MCP Manager
         self.mcp = MCPManager(self.settings)
+        self.analytics = AnalyticsEngine()
+        self.memory = MemoryManager(model_name=model, fallback_max_tokens=max_tokens)
         
         # Base system prompt
         final_prompt = SYSTEM_PROMPT + self.mcp.get_system_prompt_additions()
+        
+        # Inject Repo Map
+        try:
+            from .repo_map import RepoMapper
+            mapper = RepoMapper(os.getcwd())
+            repo_map = mapper.generate_map()
+            final_prompt += f"\n\n--- REPOSITORY MAP ---\n{repo_map}\n----------------------\n"
+        except Exception as e:
+            logger.error(f"Failed to generate repo map: {e}")
+        
+        # Load .nimcoderules if present
+        rules_path = os.path.join(os.getcwd(), ".nimcoderules")
+        if os.path.exists(rules_path):
+            try:
+                with open(rules_path, "r", encoding="utf-8") as f:
+                    rules = f.read()
+                final_prompt += f"\n\nPROJECT-SPECIFIC RULES (.nimcoderules):\n{rules}\n"
+                logger.info("Loaded .nimcoderules")
+            except Exception as e:
+                logger.error(f"Failed to load .nimcoderules: {e}")
         
         # Load skills if present
         skills_dir = os.path.join(os.getcwd(), ".nimcode", "skills")
@@ -81,13 +106,18 @@ class Agent:
                 final_prompt += f"\n\nGIT CONTEXT:\nBranch: {branch}\nUncommitted changes:\n{status if status else 'None'}"
             except Exception as e:
                 logger.error(f"Failed to load git context: {e}")
+                
+        # Repo Map
+        repo_map = self._generate_repo_map(os.getcwd())
+        if repo_map:
+            final_prompt += f"\n\nREPOSITORY MAP:\n{repo_map}"
 
         self.messages: List[Dict[str, Any]] = [
             {"role": "system", "content": final_prompt}
         ]
         self.max_turns = max_turns
         self.permission_engine = PermissionEngine(mode=permission_mode)
-        self.memory = MemoryManager(max_tokens=max_tokens)
+        self.memory = MemoryManager(model_name=model, fallback_max_tokens=max_tokens)
 
     def save_history(self):
         """Saves current conversation to NIMCODE.md"""
@@ -107,6 +137,28 @@ class Agent:
                     self.messages = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load history: {e}")
+
+    def _generate_repo_map(self, cwd: str) -> str:
+        """Generates a fast, lightweight file tree map."""
+        ignore_dirs = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', 'env', '.nimcode'}
+        tree = []
+        for root, dirs, files in os.walk(cwd):
+            dirs[:] = [d for d in dirs if d not in ignore_dirs and not d.startswith('.')]
+            level = root.replace(cwd, '').count(os.sep)
+            indent = ' ' * 4 * level
+            basename = os.path.basename(root)
+            if basename:
+                tree.append(f"{indent}{basename}/")
+            subindent = ' ' * 4 * (level + 1)
+            for f in files:
+                if not f.endswith('.pyc') and not f.startswith('.'):
+                    tree.append(f"{subindent}{f}")
+                    
+        # Limit to 500 lines to save context
+        if len(tree) > 500:
+            tree = tree[:500] + ["... (truncated for context limit)"]
+            
+        return "\n".join(tree)
 
     async def _stream_response(self) -> str:
         from rich.live import Live
@@ -170,23 +222,16 @@ class Agent:
                 live.update(Markdown(response_text + "\n\n*[yellow]Stream interrupted by user.[/yellow]*", code_theme=code_theme))
                 c.print("\n[yellow]Generation interrupted.[/yellow]")
                 
-        # Approximate Token Tracker Update
-        est_tokens = len(response_text) // 4
-        if not hasattr(self, "session_tokens"):
-            self.session_tokens = 0
-        self.session_tokens += est_tokens
+        # Analytics Token Tracker Update
+        est_prompt_tokens = self.client.count_tokens_approx(self.messages)
+        est_completion_tokens = len(response_text) // 4
         
-        # Approximate cost based on 70B typical rates ($3/1M tokens)
-        cost = (self.session_tokens / 1000000) * 3.0
-        c.print(f"[dim]Output est. tokens: {est_tokens} | Session Cost: ~${cost:.4f}[/dim]")
+        self.analytics.log_usage(self.model, est_prompt_tokens, est_completion_tokens)
         
-        # Context usage warning
-        import json
-        total_context_chars = sum(len(str(m.get("content", ""))) for m in self.messages)
-        total_est_tokens = total_context_chars // 4
-        max_context = 128000  # Assume standard Llama-3.1 128k context for now
-        if total_est_tokens > max_context * 0.8:
-            c.print("[bold yellow]⚠️ Context window is over 80% full. Consider running /compact or /clear.[/bold yellow]")
+        # Display today's cost
+        stats = self.analytics.get_summary()
+        today_cost = stats["today"]["cost_usd"]
+        c.print(f"[dim]Output est. tokens: {est_completion_tokens} | Today's Cost: ~${today_cost:.4f}[/dim]")
             
         return response_text
 
@@ -197,6 +242,10 @@ class Agent:
         from .tools import ToolRegistry
         while turn < max_turns:
             turn += 1
+            if self.memory.count_messages_tokens(self.messages) > (self.memory.max_tokens * 0.8):
+                logger.info("Context full in headless mode. Distilling memory via LLM...")
+                self.messages = await self._distill_memory()
+                
             try:
                 response_text = await self.client.chat_one_shot(self.messages)
             except Exception as e:
@@ -256,7 +305,7 @@ class Agent:
             
             # Compact context before calling API
             from rich.console import Console
-            if self.memory.count_messages_tokens(self.messages) > self.memory.max_tokens:
+            if self.memory.count_messages_tokens(self.messages) > (self.memory.max_tokens * 0.8):
                 logger.info("Context full. Distilling memory via LLM...")
                 Console().print("[dim italic]🧠 Context full. Distilling memory into a summary to save tokens...[/dim italic]")
                 self.messages = await self._distill_memory()

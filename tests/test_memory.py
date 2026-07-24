@@ -22,7 +22,7 @@ def test_compact_context_empty():
     assert manager.compact_context([]) == []
 
 def test_compact_context_no_change():
-    manager = MemoryManager(max_tokens=100)
+    manager = MemoryManager(fallback_max_tokens=100)
     messages = [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hello"}
@@ -33,7 +33,7 @@ def test_compact_context_no_change():
 
 def test_compact_context_drops_oldest():
     # max_tokens = 4 means around 12-15 chars max
-    manager = MemoryManager(max_tokens=4) 
+    manager = MemoryManager(fallback_max_tokens=4) 
     messages = [
         {"role": "system", "content": "s"},          # 1 token
         {"role": "user", "content": "12345678"},     # 3 tokens
@@ -48,7 +48,7 @@ def test_compact_context_drops_oldest():
     assert compacted[1]["content"] == "new"
 
 def test_compact_context_truncates_if_single_message_too_large():
-    manager = MemoryManager(max_tokens=3)
+    manager = MemoryManager(fallback_max_tokens=3)
     messages = [
         {"role": "system", "content": "s"},          # 1 token
         {"role": "user", "content": "1234567890"},   # 3 tokens
@@ -64,7 +64,7 @@ def test_compact_context_truncates_if_single_message_too_large():
     assert compacted[1]["content"].startswith("12345678")
 
 def test_compact_context_empty():
-    manager = MemoryManager(max_tokens=100)
+    manager = MemoryManager(fallback_max_tokens=100)
     assert manager.compact_context([]) == []
 
 def test_log_to_nimcode_md(tmp_path):

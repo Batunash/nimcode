@@ -9,7 +9,9 @@ setup(
         "httpx>=0.27.0",
         "rich>=13.7.0",
         "prompt_toolkit>=3.0.0",
-        "mcp>=1.2.0"
+        "mcp>=1.2.0",
+        "keyring>=24.0.0",
+        "watchdog>=4.0.0"
     ],
     entry_points={
         "console_scripts": [

@@ -14,13 +14,15 @@ def run_login():
     console.print("Get your API key from [bold underline blue]https://build.nvidia.com/[/bold underline blue]")
     
     import getpass
+    import keyring
+    
     api_key = getpass.getpass("Enter your NVIDIA NIM API Key: ")
     if not api_key.strip():
         console.print("[red]API Key cannot be empty.[/red]")
         return
         
-    save_global_setting("api_key", api_key.strip())
-    console.print("[green][OK] API Key saved successfully to ~/.nimcode/settings.json[/green]")
+    keyring.set_password("nimcode", "api_key", api_key.strip())
+    console.print("[green][OK] API Key saved securely to OS Keyring[/green]")
 
 def run_doctor():
     console.print("[bold cyan]NimCode Doctor[/bold cyan] - Diagnostics")
@@ -78,17 +80,19 @@ def main():
     parser.add_argument("--max-turns", "-t", type=int, default=30, help="Maximum number of turns the agent is allowed to run.")
     parser.add_argument("--permission-mode", "-p", type=PermissionMode, choices=list(PermissionMode), default=PermissionMode.DEFAULT, help="Permission mode for mutating tools.")
     parser.add_argument("--resume", "-r", action="store_true", help="Resume from the last session stored in NIMCODE.md.")
+    parser.add_argument("--stdio", action="store_true", help="Run NimCode as a JSON-RPC server over stdio for IDE integration.")
     
     args = parser.parse_args()
     
     settings = load_settings()
     
-    final_key = args.api_key or os.environ.get("NIM_API_KEY") or settings.get("api_key")
+    import keyring
+    final_key = args.api_key or os.environ.get("NIM_API_KEY") or keyring.get_password("nimcode", "api_key") or settings.get("api_key")
     if not final_key:
         console.print("[yellow]No API Key found. Let's get you set up![/yellow]")
         run_login()
         settings = load_settings()
-        final_key = settings.get("api_key")
+        final_key = keyring.get_password("nimcode", "api_key") or settings.get("api_key")
         if not final_key:
             console.print("[bold red]API Key is required to use NimCode. Exiting.[/bold red]")
             sys.exit(1)
@@ -117,6 +121,10 @@ def main():
         console.print(f"[bold green]Starting NimCode[/bold green] with model [cyan]{args.model}[/cyan]")
         console.print(f"Task: {args.prompt}")
         asyncio.run(agent.run(args.prompt))
+    elif args.stdio:
+        from .stdio_server import StdioServer
+        server = StdioServer(agent)
+        asyncio.run(server.start())
     else:
         from .repl import NimcodeREPL
         repl = NimcodeREPL(agent)

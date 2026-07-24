@@ -1,10 +1,80 @@
 import os
-from typing import List, Dict, Any
+import json
+import time
+import urllib.request
+import logging
+from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
+
+class DynamicContextFetcher:
+    CACHE_FILE = os.path.expanduser('~/.nimcode/context_map.json')
+    CACHE_EXPIRY = 24 * 3600 # 24 hours
+    URL = 'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json'
+
+    @classmethod
+    def get_max_tokens(cls, model_name: str, default_limit: int = 8000) -> int:
+        if not model_name:
+            return default_limit
+            
+        data = cls._load_map()
+        if not data:
+            return default_limit
+        
+        # Exact match
+        for k, v in data.items():
+            if model_name.lower() == k.lower():
+                return v.get('max_tokens', default_limit) or default_limit
+                
+        # Heuristic matching
+        clean_model = model_name.split('/')[-1].lower()
+        
+        matches = []
+        for k, v in data.items():
+            if clean_model in k.lower():
+                tokens = v.get('max_tokens')
+                if tokens:
+                    matches.append(tokens)
+                    
+        if matches:
+            return max(matches)
+            
+        return default_limit
+
+    @classmethod
+    def _load_map(cls) -> Optional[dict]:
+        if os.path.exists(cls.CACHE_FILE):
+            if time.time() - os.path.getmtime(cls.CACHE_FILE) < cls.CACHE_EXPIRY:
+                try:
+                    with open(cls.CACHE_FILE, 'r', encoding='utf-8') as f:
+                        return json.load(f)
+                except:
+                    pass
+                    
+        # Fetch live
+        try:
+            req = urllib.request.Request(cls.URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=5.0) as res:
+                data = json.loads(res.read().decode('utf-8'))
+                os.makedirs(os.path.dirname(cls.CACHE_FILE), exist_ok=True)
+                with open(cls.CACHE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f)
+                return data
+        except Exception as e:
+            logger.debug(f"Failed to fetch dynamic context map: {e}")
+            return None
 
 class MemoryManager:
-    def __init__(self, max_tokens: int = 4000):
+    def __init__(self, model_name: str = None, fallback_max_tokens: int = 8000):
         # We assume 1 token ~= 4 chars roughly
-        self.max_tokens = max_tokens
+        self.model_name = model_name
+        self.fallback_max_tokens = fallback_max_tokens
+        
+    @property
+    def max_tokens(self) -> int:
+        if not self.model_name:
+            return self.fallback_max_tokens
+        return DynamicContextFetcher.get_max_tokens(self.model_name, self.fallback_max_tokens)
 
     @staticmethod
     def count_tokens(text: str) -> int:

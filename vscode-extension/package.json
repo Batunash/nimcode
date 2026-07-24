@@ -12,10 +12,28 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nimcode-sidebar",
+          "title": "NimCode",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "nimcode-sidebar": [
+        {
+          "type": "webview",
+          "id": "nimcode.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "nimcode.helloWorld",
-        "title": "Hello World"
+        "command": "nimcode.startChat",
+        "title": "NimCode: Start Chat"
       }
     ]
   },
