@@ -39,7 +39,8 @@ class DynamicContextFetcher:
         if matches:
             return max(matches)
             
-        return default_limit
+        from .nim_client import NimClient
+        return NimClient.get_model_context_length(model_name)
 
     @classmethod
     def _load_map(cls) -> Optional[dict]:

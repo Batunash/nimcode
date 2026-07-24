@@ -71,6 +71,14 @@ class StdioServer:
         """Start the stdio listener loop."""
         self.send_message({"type": "info", "content": "NimCode Stdio Server Started"})
         
+        async def fetch_and_send_models():
+            try:
+                models = await self.agent.client.get_available_models()
+                self.send_message({"type": "models_list", "models": models, "current": self.agent.model})
+            except Exception:
+                pass
+        asyncio.create_task(fetch_and_send_models())
+        
         loop = asyncio.get_running_loop()
         
         while True:
@@ -103,7 +111,16 @@ class StdioServer:
                     if mode in [m.value for m in PermissionMode]:
                         self.agent.permission_engine.mode = PermissionMode(mode)
                         self.send_message({"type": "info", "content": f"Mode changed to {mode}"})
-                
+                elif msg_type == "set_model":
+                    model = msg.get("model")
+                    if model:
+                        self.agent.model = model
+                        self.agent.client.model = model
+                        
+                        from .config import save_global_setting
+                        save_global_setting("model", model)
+                        self.send_message({"type": "info", "content": f"Model changed to {model}"})
+                        
             except json.JSONDecodeError:
                 self.send_message({"type": "error", "content": "Invalid JSON received"})
             except Exception as e:

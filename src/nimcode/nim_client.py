@@ -19,6 +19,23 @@ class NimClient:
             "Accept": "text/event-stream"
         }
         
+    @staticmethod
+    def get_model_context_length(model_name: str) -> int:
+        """Heuristically determines the maximum token context length from the model name."""
+        model_lower = model_name.lower()
+        if "llama-3.1" in model_lower or "llama-3.2" in model_lower:
+            return 128000
+        elif "nemotron" in model_lower:
+            return 128000 # Nemotron-4 is usually high context
+        elif "mixtral" in model_lower:
+            return 64000
+        elif "phi" in model_lower:
+            return 128000
+        elif "gemma" in model_lower:
+            return 8192
+        # Default fallback
+        return 32000
+
     async def get_available_models(self) -> List[str]:
         if self.is_local:
             try:

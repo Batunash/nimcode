@@ -282,11 +282,14 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   <div class="header">
     <div style="font-weight: 600;">NimCode AI</div>
-    <select id="mode-select" title="Permission Mode">
-      <option value="default">Interactive</option>
-      <option value="auto">Auto-Safe</option>
-      <option value="bypass">Bypass (Auto-Pilot)</option>
-    </select>
+    <div style="display: flex; gap: 8px;">
+      <select id="model-select" title="AI Model" style="max-width: 150px; text-overflow: ellipsis;"></select>
+      <select id="mode-select" title="Permission Mode">
+        <option value="default">Interactive</option>
+        <option value="auto">Auto-Safe</option>
+        <option value="bypass">Bypass (Auto-Pilot)</option>
+      </select>
+    </div>
   </div>
 
   <div class="chat-container" id="chat">
@@ -311,6 +314,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const sendBtn = document.getElementById('send-btn');
     const clearBtn = document.getElementById('clear-btn');
     const modeSelect = document.getElementById('mode-select');
+    const modelSelect = document.getElementById('model-select');
 
     // Configure marked with highlight.js
     marked.setOptions({
@@ -329,9 +333,24 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       vscode.postMessage({ type: 'set_mode', mode: e.target.value });
     });
 
+    modelSelect.addEventListener('change', (e) => {
+      vscode.postMessage({ type: 'set_model', model: e.target.value });
+    });
+
     window.addEventListener('message', event => {
       const message = event.data;
       switch (message.type) {
+        case 'models_list':
+          modelSelect.innerHTML = '';
+          message.models.forEach(model => {
+            const opt = document.createElement('option');
+            opt.value = model;
+            // Simplify model name for display
+            opt.textContent = model.split('/').pop();
+            if (model === message.current) opt.selected = true;
+            modelSelect.appendChild(opt);
+          });
+          break;
         case 'chunk':
           if (!currentAssistantMessage) {
             currentAssistantMessage = document.createElement('div');
