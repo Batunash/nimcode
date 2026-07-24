@@ -90,14 +90,15 @@ class NimClient:
             "stream": stream
         }
         
-        max_retries = 6
+        max_retries = 15
         base_delay = 2.0
+        max_delay = 60.0
         
         for attempt in range(max_retries):
             chunk_yielded = False
             try:
                 async with httpx.AsyncClient() as client:
-                    async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=60.0) as response:
+                    async with client.stream("POST", f"{self.base_url}/chat/completions", headers=self.headers, json=payload, timeout=120.0) as response:
                         if response.status_code in [408, 429, 500, 502, 503, 504, 529]:
                             raise httpx.HTTPStatusError(f"Temporary server error {response.status_code}", request=response.request, response=response)
                         
@@ -127,7 +128,7 @@ class NimClient:
                     yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your API key if 401.]"
                     return
                     
-                delay = base_delay * (2 ** attempt)
+                delay = min(max_delay, base_delay * (2 ** attempt))
                 logger.warning(f"API HTTP error {e.response.status_code}. Retrying in {delay}s...")
                 await asyncio.sleep(delay)
                 
@@ -137,7 +138,7 @@ class NimClient:
                     yield f"\n\n[Error communicating with NVIDIA API: {type(e).__name__} - {e}]"
                     return
                     
-                delay = base_delay * (2 ** attempt)
+                delay = min(max_delay, base_delay * (2 ** attempt))
                 logger.warning(f"API connection error: {type(e).__name__} - {e}. Retrying in {delay}s...")
                 await asyncio.sleep(delay)
 
