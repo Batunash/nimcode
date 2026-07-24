@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 import shutil
 import json
 import logging
@@ -906,7 +907,6 @@ class NimcodeREPL:
                         console.print(f"\n\n[bold magenta]🔬 Subagent Research Complete for '{q}'![/bold magenta]\n{result}\n")
                         self.messages.append({"role": "system", "content": f"A background subagent completed research on '{q}'. Result:\n{result}"})
                     
-                    import asyncio
                     asyncio.create_task(bg_research(query))
                     console.print("[dim italic]Subagent spawned in background. You can continue chatting![/dim italic]")
                     continue
@@ -964,7 +964,6 @@ class NimcodeREPL:
                         
                         console.print(f"\n[bold magenta]🐝 Swarm Finished![/bold magenta]\n[bold]Review:[/bold]\n{review}")
                         
-                    import asyncio
                     asyncio.create_task(run_swarm(task))
                     continue
                 elif user_input.strip().startswith("/tdd "):
@@ -982,7 +981,6 @@ class NimcodeREPL:
                         result = await tdd_agent.run_headless(feat, max_turns=10)
                         console.print(f"\n[bold green]🧪 TDD Completed![/bold green]\n{result}")
                         
-                    import asyncio
                     asyncio.create_task(run_tdd(feature))
                     continue
                 elif user_input.strip().startswith("/"):
