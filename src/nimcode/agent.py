@@ -289,6 +289,9 @@ class Agent:
                 
                 if not tool_calls:
                     # Model responded with plain text but didn't say TASK_COMPLETE.
+                    if "[Error: Model API returned" in full_content or "[Error communicating with" in full_content:
+                        break
+                        
                     self.messages.append({"role": "user", "content": "Please continue. Use a tool or output TASK_COMPLETE."})
                     continue
                     

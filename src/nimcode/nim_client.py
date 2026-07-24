@@ -111,10 +111,10 @@ class NimClient:
                 except Exception:
                     text = "<unread stream>"
                 logger.error(f"API HTTP error: {e.response.status_code} - {text}")
-                yield f"\\n\\n[Error: Model API returned {e.response.status_code}. Please check your NVIDIA API key.]"
+                yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your NVIDIA API key.]"
             except Exception as e:
                 logger.error(f"API connection error: {e}")
-                yield f"\\n\\n[Error communicating with NVIDIA API: {e}]"
+                yield f"\n\n[Error communicating with NVIDIA API: {e}]"
 
     def count_tokens_approx(self, messages: List[Dict[str, Any]]) -> int:
         total_chars = 0

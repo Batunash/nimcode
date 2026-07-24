@@ -74,8 +74,6 @@ class NimcodeREPL:
         from prompt_toolkit.history import FileHistory
         import os
         from prompt_toolkit.styles import Style
-        from rich.console import Console
-        from rich.panel import Panel
 
         # Connect MCPs before REPL
         if hasattr(self.agent.mcp, "connect_all"):
@@ -190,7 +188,7 @@ class NimcodeREPL:
         except Exception:
             pass
         
-        right_content = "[bold orange3]Tips for getting started[/bold orange3]\nRun [cyan]/help[/cyan] to see available commands and shortcuts.\nUse [cyan]/models[/cyan] to change the current model.\n\n[bold orange3]What's new[/bold orange3]\n• Added native multiline REPL support (Alt+Enter for newline).\n• Polished UI to match Claude Code experience.\n• More robust JSON parsing for tools."
+        right_content = "[bold orange3]Tips for getting started[/bold orange3]\nRun [cyan]/help[/cyan] to see available commands and shortcuts.\nUse [cyan]/models[/cyan] to change the current model.\n\n[bold orange3]What's new[/bold orange3]\n• Added native multiline REPL support (Alt+Enter for newline).\n• Reverted to classic UI.\n• More robust JSON parsing for tools."
         
         table.add_row(left_content, right_content)
         panel = Panel(table, title="[bold orange3]NimCode v3.0.0[/bold orange3]", border_style="orange3", box=ROUNDED, title_align="left")
@@ -340,7 +338,12 @@ class NimcodeREPL:
                     self.agent.save_history()
                     watcher.stop()
                     break
-                elif user_input.strip() == "/help":
+                
+                user_input = user_input.strip()
+                if user_input.lower() in ["help", "quit", "exit", "clear"]:
+                    user_input = "/" + user_input.lower()
+
+                if user_input == "/help":
                     from rich.table import Table
                     table = Table(title="NimCode Commands", show_header=True, header_style="bold magenta")
                     table.add_column("Command", style="cyan", width=15)

@@ -122,6 +122,8 @@ async def test_start_repl_exit(agent):
 async def test_start_repl_commands(agent):
     agent.mcp = MagicMock()
     agent.mcp.connect_all = AsyncMock()
+    agent.analytics = MagicMock()
+    agent.analytics.get_summary = MagicMock(return_value={"today": {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}, "total": {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0}})
     
     # We will feed all commands one by one, then /exit
     commands = [
@@ -191,12 +193,13 @@ async def test_start_repl_commands(agent):
                 agent.run = AsyncMock()
                 
                 with patch("rich.prompt.Prompt.ask", return_value="1"):
-                    try:
-                        from nimcode.repl import NimcodeREPL
-                        repl = NimcodeREPL(agent)
-                        await repl.start_repl()
-                    except StopAsyncIteration:
-                        pass
+                    with patch("rich.console.Console.print"):
+                        try:
+                            from nimcode.repl import NimcodeREPL
+                            repl = NimcodeREPL(agent)
+                            await repl.start_repl()
+                        except StopAsyncIteration:
+                            pass
 
 
 import pytest

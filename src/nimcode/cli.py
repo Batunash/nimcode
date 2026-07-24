@@ -56,7 +56,19 @@ def install_hook():
     os.chmod(hook_path, os.stat(hook_path).st_mode | stat.S_IEXEC)
     console.print(f"[green][OK][/green] Git hook installed to {hook_path}")
 
+def _silence_anyio_errors():
+    import sys
+    original_hook = sys.unraisablehook
+    def custom_unraisablehook(unraisable):
+        if unraisable.exc_type == RuntimeError and "exit cancel scope in a different task" in str(unraisable.exc_value):
+            return
+        if unraisable.exc_type == BaseExceptionGroup and "unhandled errors in a TaskGroup" in str(unraisable.exc_value):
+            return
+        original_hook(unraisable)
+    sys.unraisablehook = custom_unraisablehook
+
 def main():
+    _silence_anyio_errors()
     parser = argparse.ArgumentParser(description="NimCode: Autonomous Coding Agent for NVIDIA NIM APIs")
     
     # Check for doctor manually to avoid subparser conflict

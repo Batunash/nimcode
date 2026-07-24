@@ -14,8 +14,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "nimcode.helloWorld",
-        "title": "Hello World"
+        "command": "nimcode.startChat",
+        "title": "NimCode: Start Chat"
       }
     ]
   },
