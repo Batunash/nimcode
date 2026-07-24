@@ -1,44 +1,71 @@
 import sys
+import os
 import json
 import asyncio
 import logging
 from .agent import Agent
-from .config import load_settings
+from .permissions import PermissionMode
 
 logger = logging.getLogger(__name__)
 
 class StdioServer:
     """
     Communicates with the VS Code extension via JSON-RPC over standard input/output.
+    Intercepts the Agent's print statements and permission checks to keep IPC clean.
     """
     def __init__(self, agent: Agent):
         self.agent = agent
+        # Save original stdout for IPC, redirect normal stdout to os.devnull
+        self.ipc_stdout = sys.__stdout__
+        sys.stdout = open(os.devnull, 'w')
+        
+        self.pending_action: asyncio.Future = None
+
+        # Monkey-patch agent permission prompting and output
+        self._patch_agent()
+
+    def _patch_agent(self):
+        # Override the agent's permission prompter
+        original_prompt = self.agent.permission_engine._prompt_user
+        
+        async def async_prompt_override(tool_call):
+            if self.agent.permission_engine.mode == PermissionMode.BYPASS:
+                return True
+                
+            self.send_message({
+                "type": "action_required",
+                "tool": tool_call.get("tool"),
+                "args": tool_call.get("args")
+            })
+            
+            # Wait for VS Code to respond
+            self.pending_action = asyncio.Future()
+            result = await self.pending_action
+            return result
+            
+        self.agent.permission_engine._prompt_user = async_prompt_override
+
+        # Override stream output to send tokens via IPC instead of stdout
+        original_stream = self.agent._stream_response
+        
+        async def stdio_stream_response():
+            self.send_message({"type": "status", "content": "Thinking..."})
+            full_content = ""
+            async for chunk in self.agent.client.chat_stream(self.agent.messages):
+                full_content += chunk
+                self.send_message({"type": "chunk", "content": chunk})
+            self.send_message({"type": "done"})
+            return full_content
+            
+        self.agent._stream_response = stdio_stream_response
 
     def send_message(self, message: dict):
-        """Send a JSON message to stdout."""
-        sys.stdout.write(json.dumps(message) + "\n")
-        sys.stdout.flush()
-
-    async def _mock_stream_response(self, initial_prompt: str):
-        """
-        Since the regular stream_response expects a terminal, we override the agent's behavior
-        for stdio to send chunks back as JSON messages.
-        """
-        self.agent.messages.append({"role": "user", "content": initial_prompt})
-        
-        full_response = ""
+        """Send a JSON message to original stdout."""
         try:
-            self.send_message({"type": "status", "content": "Thinking..."})
-            async for chunk in self.agent.client.chat_stream(self.agent.messages):
-                full_response += chunk
-                self.send_message({"type": "chunk", "content": chunk})
-                
-            self.agent.messages.append({"role": "assistant", "content": full_response})
-            self.agent.save_history()
-            
-            self.send_message({"type": "done"})
-        except Exception as e:
-            self.send_message({"type": "error", "content": str(e)})
+            self.ipc_stdout.write(json.dumps(message) + "\n")
+            self.ipc_stdout.flush()
+        except Exception:
+            pass
 
     async def start(self):
         """Start the stdio listener loop."""
@@ -47,7 +74,7 @@ class StdioServer:
         loop = asyncio.get_running_loop()
         
         while True:
-            # Read line from stdin in a non-blocking way if possible, or run in executor
+            # Read line from stdin in a non-blocking way if possible
             line = await loop.run_in_executor(None, sys.stdin.readline)
             if not line:
                 break
@@ -62,12 +89,29 @@ class StdioServer:
                 
                 if msg_type == "prompt":
                     prompt = msg.get("content", "")
-                    await self._mock_stream_response(prompt)
+                    # Fire and forget the agent run loop so it doesn't block the stdin reader
+                    asyncio.create_task(self._run_agent(prompt))
+                elif msg_type == "action_response":
+                    if self.pending_action and not self.pending_action.done():
+                        granted = msg.get("granted", False)
+                        self.pending_action.set_result(granted)
                 elif msg_type == "clear":
                     self.agent.messages = [self.agent.messages[0]]
                     self.send_message({"type": "info", "content": "Context cleared"})
+                elif msg_type == "set_mode":
+                    mode = msg.get("mode")
+                    if mode in [m.value for m in PermissionMode]:
+                        self.agent.permission_engine.mode = PermissionMode(mode)
+                        self.send_message({"type": "info", "content": f"Mode changed to {mode}"})
                 
             except json.JSONDecodeError:
                 self.send_message({"type": "error", "content": "Invalid JSON received"})
             except Exception as e:
                 self.send_message({"type": "error", "content": f"Server error: {e}"})
+
+    async def _run_agent(self, prompt: str):
+        try:
+            await self.agent.run(prompt)
+            self.send_message({"type": "agent_finished"})
+        except Exception as e:
+            self.send_message({"type": "error", "content": f"Agent crashed: {e}"})

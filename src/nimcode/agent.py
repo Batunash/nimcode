@@ -346,7 +346,7 @@ class Agent:
                 tool_name = tool_call.get("tool", "Unknown")
                 
                 logger.info(f"Checking permissions for tool: {tool_name}")
-                if not self.permission_engine.check_permission(tool_call):
+                if not await self.permission_engine.check_permission(tool_call):
                     self.messages.append({
                         "role": "user",
                         "content": f"User explicitly denied permission to execute {tool_name}. Please choose another approach."

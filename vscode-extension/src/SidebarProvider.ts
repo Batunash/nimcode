@@ -1,10 +1,8 @@
 import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
-import * as path from 'path';
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   _view?: vscode.WebviewView;
-  _doc?: vscode.TextDocument;
   private nimcodeProcess: ChildProcess | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
@@ -22,25 +20,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (data) => {
       switch (data.type) {
         case 'onInfo': {
-          if (!data.value) {
-            return;
-          }
+          if (!data.value) return;
           vscode.window.showInformationMessage(data.value);
           break;
         }
         case 'onError': {
-          if (!data.value) {
-            return;
-          }
+          if (!data.value) return;
           vscode.window.showErrorMessage(data.value);
           break;
         }
         case 'prompt': {
-          // Send prompt to Python backend
-          if (!this.nimcodeProcess) {
-            this.startNimcodeServer();
-          }
-          
+          if (!this.nimcodeProcess) this.startNimcodeServer();
           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
             const payload = JSON.stringify({ type: 'prompt', content: data.value });
             this.nimcodeProcess.stdin.write(payload + '\n');
@@ -54,10 +44,23 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case 'action_response': {
+           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+            const payload = JSON.stringify({ type: 'action_response', granted: data.granted });
+            this.nimcodeProcess.stdin.write(payload + '\n');
+          }
+          break;
+        }
+        case 'set_mode': {
+           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+            const payload = JSON.stringify({ type: 'set_mode', mode: data.mode });
+            this.nimcodeProcess.stdin.write(payload + '\n');
+          }
+          break;
+        }
       }
     });
 
-    // Automatically start the server when the view is resolved
     this.startNimcodeServer();
   }
 
@@ -70,8 +73,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       this.nimcodeProcess.kill();
     }
     
-    // We expect nimcode to be runnable via python -m nimcode from the workspace root or installed globally
-    // For development, we'll try to run the local module
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
     if (!workspaceRoot) {
         vscode.window.showErrorMessage('NimCode requires an open workspace.');
@@ -81,11 +82,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     try {
         this.nimcodeProcess = spawn('nimcode', ['--stdio'], { cwd: workspaceRoot });
     } catch (e) {
-        // Fallback to python module if nimcode is not in PATH
         this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot });
     }
     
-
     if (this.nimcodeProcess.stdout) {
       this.nimcodeProcess.stdout.on('data', (data) => {
         const lines = data.toString().split('\n');
@@ -95,43 +94,60 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             const msg = JSON.parse(line);
             this._view?.webview.postMessage(msg);
           } catch (e) {
-            console.error('Failed to parse NimCode STDOUT:', line);
+            // Ignore non-JSON output (maybe debug prints)
           }
         }
       });
     }
 
-    if (this.nimcodeProcess.stderr) {
-      this.nimcodeProcess.stderr.on('data', (data) => {
-        console.error(`NimCode STDERR: ${data}`);
-      });
-    }
-
     this.nimcodeProcess.on('close', (code) => {
-      console.log(`NimCode process exited with code ${code}`);
       this.nimcodeProcess = null;
     });
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
-    // We will build a sleek Claude-like UI using VS Code theme variables
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NimCode Chat</title>
+  
+  <!-- Markdown & Highlighting -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  
   <style>
     body {
       font-family: var(--vscode-font-family);
       color: var(--vscode-editor-foreground);
-      background-color: var(--vscode-editor-background);
+      background-color: var(--vscode-sideBar-background);
       padding: 0;
       margin: 0;
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
+
+    .header {
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--vscode-sideBarTitle-background);
+      border-bottom: 1px solid var(--vscode-widget-border);
+    }
+    
+    .header select {
+      background: var(--vscode-dropdown-background);
+      color: var(--vscode-dropdown-foreground);
+      border: 1px solid var(--vscode-dropdown-border);
+      padding: 4px;
+      border-radius: 4px;
+      outline: none;
+    }
+
     .chat-container {
       flex: 1;
       overflow-y: auto;
@@ -140,38 +156,68 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       flex-direction: column;
       gap: 16px;
     }
+    
     .message {
-      padding: 12px;
+      padding: 14px;
       border-radius: 8px;
-      line-height: 1.5;
-      font-size: 14px;
-      max-width: 90%;
+      line-height: 1.6;
+      font-size: 13px;
+      max-width: 95%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
+    
+    .message p { margin-top: 0; }
+    .message p:last-child { margin-bottom: 0; }
+    
     .message.user {
       align-self: flex-end;
       background-color: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
+      border-bottom-right-radius: 2px;
     }
+    
     .message.assistant {
       align-self: flex-start;
-      background-color: var(--vscode-editorWidget-background);
+      background-color: var(--vscode-editor-background);
       border: 1px solid var(--vscode-widget-border);
+      border-bottom-left-radius: 2px;
+      width: 100%;
     }
-    .message.status {
+    
+    .message.tool-request {
       align-self: center;
-      font-style: italic;
-      color: var(--vscode-descriptionForeground);
-      background: none;
-      border: none;
-      padding: 4px;
+      background-color: var(--vscode-editorWidget-background);
+      border: 1px solid var(--vscode-focusBorder);
+      width: 90%;
     }
+    
+    .tool-header {
+      font-weight: bold;
+      margin-bottom: 8px;
+      color: var(--vscode-textLink-foreground);
+    }
+    
+    .tool-args {
+      background: var(--vscode-textCodeBlock-background);
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      margin-bottom: 12px;
+    }
+    
+    .tool-actions {
+      display: flex;
+      gap: 8px;
+    }
+
     .input-container {
       padding: 16px;
-      background-color: var(--vscode-editor-background);
+      background-color: var(--vscode-sideBar-background);
       border-top: 1px solid var(--vscode-widget-border);
-      position: sticky;
-      bottom: 0;
     }
+    
     textarea {
       width: 100%;
       background-color: var(--vscode-input-background);
@@ -180,56 +226,80 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       padding: 12px;
       border-radius: 6px;
       font-family: inherit;
+      font-size: 13px;
       resize: none;
       outline: none;
       box-sizing: border-box;
+      transition: border-color 0.2s;
     }
+    
     textarea:focus {
       border-color: var(--vscode-focusBorder);
     }
+    
     .controls {
       display: flex;
       justify-content: space-between;
-      margin-top: 8px;
+      margin-top: 10px;
     }
+    
     button {
       background-color: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       border: none;
-      padding: 6px 12px;
+      padding: 6px 14px;
       border-radius: 4px;
       cursor: pointer;
+      font-weight: 500;
     }
-    button:hover {
-      background-color: var(--vscode-button-hoverBackground);
-    }
+    
+    button:hover { background-color: var(--vscode-button-hoverBackground); }
+    
     button.secondary {
       background-color: var(--vscode-button-secondaryBackground);
       color: var(--vscode-button-secondaryForeground);
     }
-    button.secondary:hover {
-      background-color: var(--vscode-button-secondaryHoverBackground);
+    
+    button.secondary:hover { background-color: var(--vscode-button-secondaryHoverBackground); }
+    
+    button.danger {
+      background-color: var(--vscode-errorForeground);
+      color: white;
     }
+    
+    /* Markdown Styles */
     pre {
       background-color: var(--vscode-textCodeBlock-background);
-      padding: 8px;
-      border-radius: 4px;
+      padding: 12px;
+      border-radius: 6px;
       overflow-x: auto;
+      margin: 10px 0;
     }
-    code {
-      font-family: var(--vscode-editor-font-family);
-    }
+    code { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
 <body>
+
+  <div class="header">
+    <div style="font-weight: 600;">NimCode AI</div>
+    <select id="mode-select" title="Permission Mode">
+      <option value="default">Interactive</option>
+      <option value="auto">Auto-Safe</option>
+      <option value="bypass">Bypass (Auto-Pilot)</option>
+    </select>
+  </div>
+
   <div class="chat-container" id="chat">
-    <div class="message assistant">Hello! I am NimCode, your AI coding assistant. How can I help you today?</div>
+    <div class="message assistant">
+      <p>Hello! I am NimCode, your AI coding assistant.</p>
+      <p>How can I help you today?</p>
+    </div>
   </div>
   
   <div class="input-container">
-    <textarea id="prompt-input" rows="3" placeholder="Ask NimCode to build something..."></textarea>
+    <textarea id="prompt-input" rows="3" placeholder="Ask NimCode to build something... (Shift+Enter for new line)"></textarea>
     <div class="controls">
-      <button class="secondary" id="clear-btn">Clear Context</button>
+      <button class="secondary" id="clear-btn">Clear</button>
       <button id="send-btn">Send</button>
     </div>
   </div>
@@ -240,29 +310,45 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const input = document.getElementById('prompt-input');
     const sendBtn = document.getElementById('send-btn');
     const clearBtn = document.getElementById('clear-btn');
+    const modeSelect = document.getElementById('mode-select');
+
+    // Configure marked with highlight.js
+    marked.setOptions({
+      highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          return hljs.highlight(code, { language: lang }).value;
+        }
+        return hljs.highlightAuto(code).value;
+      }
+    });
 
     let currentAssistantMessage = null;
+    let rawAssistantContent = "";
 
-    // Handle incoming messages from the extension
+    modeSelect.addEventListener('change', (e) => {
+      vscode.postMessage({ type: 'set_mode', mode: e.target.value });
+    });
+
     window.addEventListener('message', event => {
       const message = event.data;
       switch (message.type) {
-        case 'info':
-        case 'status':
-          // Optional status tracking
-          console.log(message.content);
-          break;
         case 'chunk':
           if (!currentAssistantMessage) {
             currentAssistantMessage = document.createElement('div');
-            currentAssistantMessage.className = 'message assistant';
+            currentAssistantMessage.className = 'message assistant markdown-body';
             chat.appendChild(currentAssistantMessage);
+            rawAssistantContent = "";
           }
-          currentAssistantMessage.textContent += message.content;
+          rawAssistantContent += message.content;
+          currentAssistantMessage.innerHTML = marked.parse(rawAssistantContent);
           chat.scrollTop = chat.scrollHeight;
           break;
         case 'done':
           currentAssistantMessage = null;
+          rawAssistantContent = "";
+          break;
+        case 'action_required':
+          renderToolRequest(message.tool, message.args);
           break;
         case 'error':
           const errorEl = document.createElement('div');
@@ -276,11 +362,53 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     });
 
+    function renderToolRequest(tool, args) {
+      const card = document.createElement('div');
+      card.className = 'message tool-request';
+      
+      const header = document.createElement('div');
+      header.className = 'tool-header';
+      header.textContent = '⚙️ Execute Tool: ' + tool;
+      
+      const argsDisplay = document.createElement('div');
+      argsDisplay.className = 'tool-args';
+      argsDisplay.textContent = JSON.stringify(args, null, 2);
+      
+      const actions = document.createElement('div');
+      actions.className = 'tool-actions';
+      
+      const approveBtn = document.createElement('button');
+      approveBtn.textContent = 'Approve';
+      approveBtn.onclick = () => {
+        card.style.opacity = '0.5';
+        actions.innerHTML = '<i>Approved</i>';
+        vscode.postMessage({ type: 'action_response', granted: true });
+      };
+      
+      const rejectBtn = document.createElement('button');
+      rejectBtn.textContent = 'Reject';
+      rejectBtn.className = 'danger';
+      rejectBtn.onclick = () => {
+        card.style.opacity = '0.5';
+        actions.innerHTML = '<i style="color:red;">Rejected</i>';
+        vscode.postMessage({ type: 'action_response', granted: false });
+      };
+      
+      actions.appendChild(approveBtn);
+      actions.appendChild(rejectBtn);
+      
+      card.appendChild(header);
+      card.appendChild(argsDisplay);
+      card.appendChild(actions);
+      
+      chat.appendChild(card);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
     function sendPrompt() {
       const text = input.value.trim();
       if (!text) return;
       
-      // Add user message to UI
       const userEl = document.createElement('div');
       userEl.className = 'message user';
       userEl.textContent = text;
@@ -301,7 +429,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
     clearBtn.addEventListener('click', () => {
       vscode.postMessage({ type: 'clear' });
-      chat.innerHTML = '<div class="message assistant">Context cleared. How can I help?</div>';
+      chat.innerHTML = '<div class="message assistant"><p>Context cleared. How can I help?</p></div>';
     });
   </script>
 </body>

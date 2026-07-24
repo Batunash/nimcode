@@ -18,7 +18,7 @@ class PermissionEngine:
         self.mode = mode
         self.safe_tools = {"Read", "Glob", "Grep"}
 
-    def check_permission(self, tool_call: dict) -> bool:
+    async def check_permission(self, tool_call: dict) -> bool:
         """Returns True if permitted, False otherwise."""
         if self.mode == PermissionMode.BYPASS:
             return True
@@ -28,9 +28,9 @@ class PermissionEngine:
         if self.mode == PermissionMode.AUTO and tool_name in self.safe_tools:
             return True
             
-        return self._prompt_user(tool_call)
+        return await self._prompt_user(tool_call)
             
-    def _prompt_user(self, tool_call: Dict[str, Any]) -> bool:
+    async def _prompt_user(self, tool_call: Dict[str, Any]) -> bool:
         from rich.panel import Panel
         from rich.prompt import Prompt
         import json
