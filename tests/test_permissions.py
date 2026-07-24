@@ -74,3 +74,11 @@ def test_permission_edit_other_args_invalid_json():
             with patch("prompt_toolkit.prompt", side_effect=["bad json", '{"file_path": "b.txt"}', '{"file_path": "b.txt"}']):
                 assert engine.check_permission(call) == True
                 assert call["args"]["file_path"] == "b.txt"
+
+def test_permission_edit_diff():
+    engine = PermissionEngine(mode=PermissionMode.DEFAULT)
+    with patch("sys.stdin.isatty", return_value=True):
+        with patch("builtins.input", return_value="a"):
+            assert engine.check_permission({"tool": "Edit", "args": {"file_path": "a.txt", "old_string": "old", "new_string": "new"}}) == True
+            assert engine.check_permission({"tool": "ASTReplace", "args": {"file_path": "b.txt", "code": "new code", "target": "func"}}) == True
+            assert engine.check_permission({"tool": "ASTReplace", "args": {"file_path": "nonexistent.txt", "code": "x"}}) == True
