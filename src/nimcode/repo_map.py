@@ -13,7 +13,7 @@ class RepoMapper:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
-            tree = ast.parse(content)
+            tree = ast.parse(content, filename=filepath)
             
             lines = []
             for node in tree.body:
@@ -37,11 +37,24 @@ class RepoMapper:
         map_lines = []
         map_lines.append(f"Repository Map for: {self.root_dir}\n")
         
+        file_count = 0
+        max_files = 1000
+        
         for root, dirs, files in os.walk(self.root_dir):
-            dirs[:] = [d for d in dirs if d not in self.exclude_dirs]
+            # Exclude specific dirs, hidden dirs, and common system folders
+            dirs[:] = [
+                d for d in dirs 
+                if d not in self.exclude_dirs 
+                and not d.startswith('.')
+                and d.lower() not in ('appdata', 'windows', 'program files', 'program files (x86)', 'temp')
+            ]
             
             for file in files:
                 if file.endswith(".py"):
+                    if file_count >= max_files:
+                        map_lines.append("... (Repository Map Truncated: Too many Python files) ...\n")
+                        return "\n".join(map_lines)
+                        
                     full_path = os.path.join(root, file)
                     rel_path = os.path.relpath(full_path, self.root_dir)
                     map_lines.append(f"FILE: {rel_path}")
@@ -49,5 +62,6 @@ class RepoMapper:
                     file_map = self._parse_python_file(full_path)
                     map_lines.append(file_map)
                     map_lines.append("")
+                    file_count += 1
                     
         return "\n".join(map_lines)

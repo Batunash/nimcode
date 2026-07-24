@@ -3,7 +3,7 @@
   "displayName": "NimCode",
   "publisher": "Batunash",
   "description": "NimCode VS Code Extension",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "engines": {
     "vscode": "^1.80.0"
   },
