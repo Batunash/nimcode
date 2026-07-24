@@ -18,11 +18,13 @@
 NimCode is your autonomous coding pair-programmer. Built with a rich interactive terminal interface, it doesn't just autocomplete code—it plans architectures, executes terminal commands, writes complete files, formats code automatically, and manages your workspace. 
 
 ### 🛠️ What We've Built So Far
+- **VS Code Deep Integration**: Native IPC communication allowing NimCode to read active editors, send patches, and act as your intelligent coding panel within VS Code.
+- **RAG & Semantic Search**: Zero-dependency TF-IDF/BM25 based indexer that instantly scans massive workspaces and retrieves context-aware code snippets.
+- **Autonomous Auto-Fixer**: The `/fix` command creates a self-healing feedback loop—it runs your broken commands, analyzes the tracebacks, and automatically iterates on code patches until the build passes.
+- **Multi-Model & Local Support**: Flexible `api_base_url` configuration to seamlessly switch between NVIDIA NIM, Ollama, or vLLM endpoints.
+- **Smart Permission Engine**: Granular control over file writes and command executions, featuring an auto-bypass mechanism and interactive `(a)ccept / (r)eject` diff previews.
 - **Robust Interactive REPL**: Multiline support (Alt+Enter), syntax highlighting, and beautiful `rich`-powered UI menus.
-- **Smart Permission Engine**: Granular control over what the AI can do, with interactive diff previews for file modifications and the brand new `/trust` mode for unhindered execution.
-- **Automated Workflows**: Automatic linting and formatting using `black`, `flake8`, and `prettier` behind the scenes with crash-resistant execution.
-- **CI/CD Integration**: A complete automated pipeline pushing to PyPI and creating GitHub Releases automatically on version tags.
-- **Extensive Tool Ecosystem**: The agent is equipped with Bash execution, AST Replacement, Semantic Search, Web Browsing, Interactive Terminal management, and much more.
+- **Automated Workflows**: Automatic linting and formatting using `black`, `flake8`, and `prettier` behind the scenes.
 - **Model Context Protocol (MCP)**: Native integration for MCP tools allowing infinite extensibility.
 
 ### 🚀 What We're Working On (Roadmap)
