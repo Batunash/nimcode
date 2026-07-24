@@ -13,9 +13,10 @@ class ToolRegistry:
     def get_tool_schema(tool_name: str) -> Optional[Dict[str, Any]]:
         schemas = {
             "Bash": {
-                "description": "Execute a shell command. Use this for running tests, git commands, etc.",
+                "description": "Execute a shell command. Use this for running tests, checking git status, running scripts.",
                 "parameters": {
-                    "command": {"type": "string", "description": "The shell command to execute."}
+                    "command": {"type": "string", "description": "The bash command to run."},
+                    "background": {"type": "boolean", "description": "Run in background without blocking. Returns a task ID.", "default": False}
                 },
                 "required": ["command"]
             },
@@ -34,23 +35,24 @@ class ToolRegistry:
                 },
                 "required": ["file_path", "content"]
             },
-            "Edit": {
-                "description": "Edit an existing file by replacing an exact string. old_string must be unique.",
+            "Replace": {
+                "description": "Edit an existing file by replacing exact strings. Allows multiple non-contiguous edits in one call.",
                 "parameters": {
                     "file_path": {"type": "string", "description": "Path to the file."},
-                    "old_string": {"type": "string", "description": "The exact string to replace, including whitespaces."},
-                    "new_string": {"type": "string", "description": "The string to replace it with."}
+                    "replacements": {
+                        "type": "array",
+                        "description": "List of replacements to apply.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "old_string": {"type": "string", "description": "The exact string to replace, including whitespaces."},
+                                "new_string": {"type": "string", "description": "The string to replace it with."}
+                            },
+                            "required": ["old_string", "new_string"]
+                        }
+                    }
                 },
-                "required": ["file_path", "old_string", "new_string"]
-            },
-            "ASTReplace": {
-                "description": "Surgically replace a Python function or class by name. Avoids whitespace matching issues. (e.g. 'MyClass.my_method' or 'my_function')",
-                "parameters": {
-                    "file_path": {"type": "string", "description": "Path to the python file."},
-                    "target_name": {"type": "string", "description": "Name of class or function to replace."},
-                    "new_code": {"type": "string", "description": "The exact new code to replace the old AST node with."}
-                },
-                "required": ["file_path", "target_name", "new_code"]
+                "required": ["file_path", "replacements"]
             },
             "StartTerminal": {
                 "description": "Start a persistent interactive terminal session. Useful for running long-lived commands or commands that prompt for user input (y/n).",
@@ -160,15 +162,13 @@ class ToolRegistry:
         
         try:
             if tool_name == "Bash":
-                return cls._execute_bash(args["command"], cwd)
+                return cls._execute_bash(args["command"], cwd, args.get("background", False))
             elif tool_name == "Read":
                 return cls._execute_read(args["file_path"], cwd)
             elif tool_name == "Write":
                 return cls._execute_write(args["file_path"], args["content"], cwd)
-            elif tool_name == "Edit":
-                return cls._execute_edit(args["file_path"], args["old_string"], args["new_string"], cwd)
-            elif tool_name == "ASTReplace":
-                return cls._execute_ast_replace(args["file_path"], args["target_name"], args["new_code"], cwd)
+            elif tool_name == "Replace":
+                return cls._execute_replace(args["file_path"], args["replacements"], cwd)
             elif tool_name == "StartTerminal":
                 return cls._execute_start_terminal(args["command"], args["term_id"], cwd)
             elif tool_name == "TerminalInput":
@@ -194,8 +194,43 @@ class ToolRegistry:
                 return f"ToolError: {str(e)}"
             return f"Error executing {tool_name}: {str(e)}"
 
-    @staticmethod
-    def _execute_bash(command: str, cwd: str) -> str:
+    _BACKGROUND_TASKS = {}
+    
+    @classmethod
+    def _execute_bash(cls, command: str, cwd: str, background: bool = False) -> str:
+        from .config import load_settings
+        settings = load_settings()
+        if settings.get("sandbox_mode", False):
+            # Sandbox the command in Docker
+            escaped_cmd = command.replace('"', '\\"')
+            command = f'docker run --rm -v "{cwd}:/workspace" -w /workspace python:3.11-slim bash -c "{escaped_cmd}"'
+            
+
+        if background:
+            import uuid
+            task_id = str(uuid.uuid4())[:8]
+            
+            # Open file for stdout/stderr
+            log_file = os.path.join(cwd, ".nimcode", "tasks", f"{task_id}.log")
+            os.makedirs(os.path.dirname(log_file), exist_ok=True)
+            
+            f = open(log_file, "w", encoding="utf-8")
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                cwd=cwd,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            cls._BACKGROUND_TASKS[task_id] = {
+                "process": process,
+                "command": command,
+                "log_file": log_file,
+                "file_handle": f
+            }
+            return f"Started task '{task_id}' in the background. Check logs at {log_file}. Use /tasks to manage."
+            
         try:
             result = subprocess.run(
                 command,
@@ -229,27 +264,75 @@ class ToolRegistry:
         import time
         import shutil
         import json
-        history_dir = os.path.join(cwd, ".nimcode", "history")
-        os.makedirs(history_dir, exist_ok=True)
+        
+        backup_dir = os.path.join(cwd, ".nimcode", "backups")
+        os.makedirs(backup_dir, exist_ok=True)
+        
         ts = int(time.time() * 1000)
         basename = os.path.basename(full_path)
         backup_name = f"{ts}_{basename}.bak"
-        backup_path = os.path.join(history_dir, backup_name)
+        backup_path = os.path.join(backup_dir, backup_name)
         shutil.copy2(full_path, backup_path)
         
-        index_path = os.path.join(history_dir, "index.json")
+        index_path = os.path.join(backup_dir, "index.json")
         index = []
         if os.path.exists(index_path):
             try:
-                with open(index_path, "r") as f:
+                with open(index_path, "r", encoding="utf-8") as f:
                     index = json.load(f)
             except:
                 pass
         
         rel_path = os.path.relpath(full_path, cwd)
         index.append({"timestamp": ts, "original_path": rel_path, "backup_file": backup_name})
-        with open(index_path, "w") as f:
+        
+        # Keep only last 50 backups to save space
+        if len(index) > 50:
+            oldest = index.pop(0)
+            oldest_file = os.path.join(backup_dir, oldest["backup_file"])
+            if os.path.exists(oldest_file):
+                os.remove(oldest_file)
+                
+        with open(index_path, "w", encoding="utf-8") as f:
             json.dump(index, f)
+
+    @staticmethod
+    def _execute_undo(cwd: str) -> str:
+        import shutil
+        import json
+        backup_dir = os.path.join(cwd, ".nimcode", "backups")
+        index_path = os.path.join(backup_dir, "index.json")
+        
+        if not os.path.exists(index_path):
+            return "Error: No backup history found."
+            
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                index = json.load(f)
+        except Exception as e:
+            return f"Error reading backup index: {e}"
+            
+        if not index:
+            return "Error: No backups available to undo."
+            
+        last_backup = index.pop()
+        backup_file_path = os.path.join(backup_dir, last_backup["backup_file"])
+        target_path = os.path.join(cwd, last_backup["original_path"])
+        
+        if not os.path.exists(backup_file_path):
+            # Try to save index anyway
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index, f)
+            return f"Error: Backup file {last_backup['backup_file']} is missing."
+            
+        try:
+            shutil.copy2(backup_file_path, target_path)
+            os.remove(backup_file_path)
+            with open(index_path, "w", encoding="utf-8") as f:
+                json.dump(index, f)
+            return f"Successfully reverted '{last_backup['original_path']}' to its previous state."
+        except Exception as e:
+            return f"Error restoring backup: {e}"
             
     @staticmethod
     def _execute_semantic_search(query: str) -> str:
@@ -302,6 +385,15 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_write(file_path: str, content: str, cwd: str) -> str:
+        # Run Secret Scanner
+        try:
+            from .secret_scanner import SecretScanner
+            findings = SecretScanner.scan(content)
+            if findings:
+                raise ToolError(f"SecretScanner blocked write: {len(findings)} secrets detected ({', '.join(findings)})")
+        except ImportError:
+            pass
+            
         full_path = os.path.join(cwd, file_path)
         os.makedirs(os.path.dirname(os.path.abspath(full_path)) or ".", exist_ok=True)
         
@@ -325,7 +417,7 @@ class ToolRegistry:
         return f"Successfully wrote to {file_path}.{diff_str}"
 
     @staticmethod
-    def _execute_edit(file_path: str, old_string: str, new_string: str, cwd: str) -> str:
+    def _execute_replace(file_path: str, replacements: list, cwd: str) -> str:
         full_path = os.path.join(cwd, file_path)
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
@@ -333,14 +425,35 @@ class ToolRegistry:
         with open(full_path, "r", encoding="utf-8") as f:
             content = f.read()
             
-        count = content.count(old_string)
-        if count == 0:
-            raise ToolError(f"old_string not found in file. Make sure exact whitespace is matched.")
-        elif count > 1:
-            raise ToolError(f"old_string found {count} times. The old_string must be unique in the file to avoid ambiguous edits.")
-            
-        new_content = content.replace(old_string, new_string, 1)
+        new_content = content
         
+        # Run Secret Scanner
+        try:
+            from .secret_scanner import SecretScanner
+            all_replacements = " ".join([rep.get("new_string", "") for rep in replacements])
+            findings = SecretScanner.scan(all_replacements)
+            if findings:
+                raise ToolError(f"SecretScanner blocked replace: {len(findings)} secrets detected ({', '.join(findings)})")
+        except ImportError:
+            pass
+            
+        applied = 0
+        
+        for rep in replacements:
+            old_str = rep.get("old_string")
+            new_str = rep.get("new_string")
+            if old_str is None or new_str is None:
+                raise ToolError("Each replacement must contain 'old_string' and 'new_string'.")
+                
+            count = new_content.count(old_str)
+            if count == 0:
+                raise ToolError(f"Target string not found in file (or already replaced). Ensure exact whitespace match:\n{old_str}")
+            elif count > 1:
+                raise ToolError(f"Target string found {count} times. The old_string must be unique in the file to avoid ambiguous edits:\n{old_str}")
+                
+            new_content = new_content.replace(old_str, new_str, 1)
+            applied += 1
+            
         import difflib
         old_lines = content.splitlines(keepends=True)
         new_lines = new_content.splitlines(keepends=True)
@@ -350,62 +463,7 @@ class ToolRegistry:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(new_content)
             
-        return f"Successfully edited {file_path}.\nDiff:\n{diff}"
-
-    @staticmethod
-    def _execute_ast_replace(file_path: str, target_name: str, new_code: str, cwd: str) -> str:
-        import ast
-        full_path = os.path.join(cwd, file_path)
-        if not os.path.exists(full_path):
-            return f"Error: {file_path} not found."
-            
-        with open(full_path, "r", encoding="utf-8") as f:
-            source = f.read()
-            
-        try:
-            tree = ast.parse(source)
-        except Exception as e:
-            return f"Error parsing python file: {e}"
-            
-        parts = target_name.split(".")
-        target_node = None
-        
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if len(parts) == 1 and node.name == parts[0]:
-                    target_node = node
-                    break
-                elif len(parts) == 2 and isinstance(node, ast.ClassDef) and node.name == parts[0]:
-                    for child in node.body:
-                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == parts[1]:
-                            target_node = child
-                            break
-                            
-        if not target_node:
-            return f"Error: Target '{target_name}' not found in AST."
-            
-        start_line = target_node.lineno - 1
-        end_line = target_node.end_lineno
-        
-        if hasattr(target_node, 'decorator_list') and target_node.decorator_list:
-            start_line = target_node.decorator_list[0].lineno - 1
-            
-        lines = source.splitlines(keepends=True)
-        new_lines = new_code.splitlines(keepends=True)
-        if not new_lines[-1].endswith('\n'):
-            new_lines[-1] += '\n'
-            
-        lines[start_line:end_line] = new_lines
-        new_source = "".join(lines)
-        
-        import difflib
-        diff = "".join(difflib.unified_diff(source.splitlines(keepends=True), lines, fromfile=file_path, tofile=file_path))
-        
-        ToolRegistry._backup_file(full_path, cwd)
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(new_source)
-            
-        return f"Successfully AST-replaced '{target_name}' in {file_path}.\nDiff:\n{diff}"
+        return f"Successfully applied {applied} replacements in {file_path}.\nDiff:\n{diff}"
 
     @staticmethod
     def _execute_glob(pattern: str, cwd: str) -> str:
