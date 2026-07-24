@@ -246,7 +246,7 @@ class ToolRegistry:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                timeout=120
+                timeout=1200
             )
             out = result.stdout + "\n" + result.stderr
             out = out.strip()
@@ -257,7 +257,7 @@ class ToolRegistry:
             
             return out if out else "Command executed successfully with no output."
         except subprocess.TimeoutExpired:
-            return "Error: Command timed out after 120 seconds."
+            return "Error: Command timed out after 1200 seconds."
         except Exception as e:
             return f"Error running bash: {e}"
 
