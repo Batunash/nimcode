@@ -1,126 +1,172 @@
 import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
+import * as path from 'path';
 
-export class SidebarProvider implements vscode.WebviewViewProvider {
-  _view?: vscode.WebviewView;
-  private nimcodeProcess: ChildProcess | null = null;
+export class ChatPanel {
+    public static currentPanel: ChatPanel | undefined;
+    private readonly _panel: vscode.WebviewPanel;
+    private readonly _extensionUri: vscode.Uri;
+    private _disposables: vscode.Disposable[] = [];
+    private nimcodeProcess: ChildProcess | null = null;
+    
+    // Pass sessionID to potentially load history later
+    public sessionId: string;
 
-  constructor(private readonly _extensionUri: vscode.Uri) {}
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, sessionId: string) {
+        this._panel = panel;
+        this._extensionUri = extensionUri;
+        this.sessionId = sessionId;
 
-  public resolveWebviewView(webviewView: vscode.WebviewView) {
-    this._view = webviewView;
+        this._panel.webview.html = this._getHtmlForWebview();
 
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this._extensionUri],
-    };
+        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+        this._panel.webview.onDidReceiveMessage(
+            async (data) => {
+                switch (data.type) {
+                    case 'onInfo': {
+                        if (!data.value) return;
+                        vscode.window.showInformationMessage(data.value);
+                        break;
+                    }
+                    case 'onError': {
+                        if (!data.value) return;
+                        vscode.window.showErrorMessage(data.value);
+                        break;
+                    }
+                    case 'prompt': {
+                        if (!this.nimcodeProcess) this.startNimcodeServer();
+                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+                            const payload = JSON.stringify({ type: 'prompt', content: data.value });
+                            this.nimcodeProcess.stdin.write(payload + '\n');
+                        }
+                        break;
+                    }
+                    case 'clear': {
+                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+                            const payload = JSON.stringify({ type: 'clear' });
+                            this.nimcodeProcess.stdin.write(payload + '\n');
+                        }
+                        break;
+                    }
+                    case 'action_response': {
+                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+                            const payload = JSON.stringify({ type: 'action_response', granted: data.granted });
+                            this.nimcodeProcess.stdin.write(payload + '\n');
+                        }
+                        break;
+                    }
+                    case 'set_mode': {
+                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+                            const payload = JSON.stringify({ type: 'set_mode', mode: data.mode });
+                            this.nimcodeProcess.stdin.write(payload + '\n');
+                        }
+                        break;
+                    }
+                    case 'set_model': {
+                        if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+                            const payload = JSON.stringify({ type: 'set_model', model: data.model });
+                            this.nimcodeProcess.stdin.write(payload + '\n');
+                        }
+                        break;
+                    }
+                }
+            },
+            null,
+            this._disposables
+        );
 
-    webviewView.webview.onDidReceiveMessage(async (data) => {
-      switch (data.type) {
-        case 'onInfo': {
-          if (!data.value) return;
-          vscode.window.showInformationMessage(data.value);
-          break;
+        this.startNimcodeServer();
+    }
+
+    public static render(extensionUri: vscode.Uri, sessionId: string = "default") {
+        if (ChatPanel.currentPanel) {
+            if (ChatPanel.currentPanel.sessionId !== sessionId) {
+                // If switching sessions, maybe reload? For now just reveal
+                ChatPanel.currentPanel.sessionId = sessionId;
+                ChatPanel.currentPanel.restartServer();
+            }
+            ChatPanel.currentPanel._panel.reveal(vscode.ViewColumn.One);
+        } else {
+            const panel = vscode.window.createWebviewPanel(
+                'nimcodeChat',
+                'NimCode Chat',
+                vscode.ViewColumn.One,
+                {
+                    enableScripts: true,
+                    localResourceRoots: [extensionUri],
+                    retainContextWhenHidden: true
+                }
+            );
+            ChatPanel.currentPanel = new ChatPanel(panel, extensionUri, sessionId);
         }
-        case 'onError': {
-          if (!data.value) return;
-          vscode.window.showErrorMessage(data.value);
-          break;
-        }
-        case 'prompt': {
-          if (!this.nimcodeProcess) this.startNimcodeServer();
-          if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-            const payload = JSON.stringify({ type: 'prompt', content: data.value });
-            this.nimcodeProcess.stdin.write(payload + '\n');
-          }
-          break;
-        }
-        case 'clear': {
-           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-            const payload = JSON.stringify({ type: 'clear' });
-            this.nimcodeProcess.stdin.write(payload + '\n');
-          }
-          break;
-        }
-        case 'action_response': {
-           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-            const payload = JSON.stringify({ type: 'action_response', granted: data.granted });
-            this.nimcodeProcess.stdin.write(payload + '\n');
-          }
-          break;
-        }
-        case 'set_mode': {
-           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-            const payload = JSON.stringify({ type: 'set_mode', mode: data.mode });
-            this.nimcodeProcess.stdin.write(payload + '\n');
-          }
-          break;
-        }
-        case 'set_model': {
-           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
-            const payload = JSON.stringify({ type: 'set_model', model: data.model });
-            this.nimcodeProcess.stdin.write(payload + '\n');
-          }
-          break;
-        }
-      }
-    });
-
-    this.startNimcodeServer();
-  }
-
-  public revive(panel: vscode.WebviewView) {
-    this._view = panel;
-  }
-
-  private startNimcodeServer() {
-    if (this.nimcodeProcess) {
-      this.nimcodeProcess.kill();
     }
     
-    const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
-    if (!workspaceRoot) {
-        vscode.window.showErrorMessage('NimCode requires an open workspace.');
-        return;
+    public restartServer() {
+        // Stop current server and restart (useful if session changed)
+        this.startNimcodeServer();
+        this._panel.webview.postMessage({ type: 'clear_ui' });
     }
 
-    try {
-        this.nimcodeProcess = spawn('nimcode', ['--stdio'], { cwd: workspaceRoot });
-    } catch (e) {
-        this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot });
-    }
-    
-    if (this.nimcodeProcess.stdout) {
-      this.nimcodeProcess.stdout.on('data', (data) => {
-        const lines = data.toString().split('\n');
-        for (const line of lines) {
-          if (line.trim() === '') continue;
-          try {
-            const msg = JSON.parse(line);
-            this._view?.webview.postMessage(msg);
-          } catch (e) {
-            // Ignore non-JSON output (maybe debug prints)
-          }
+    private startNimcodeServer() {
+        if (this.nimcodeProcess) {
+            this.nimcodeProcess.kill();
         }
-      });
+        
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('NimCode requires an open workspace.');
+            return;
+        }
+
+        try {
+            this.nimcodeProcess = spawn('nimcode', ['--stdio'], { cwd: workspaceRoot });
+        } catch (e) {
+            this.nimcodeProcess = spawn('python', ['-m', 'nimcode.cli', '--stdio'], { cwd: workspaceRoot });
+        }
+        
+        if (this.nimcodeProcess.stdout) {
+            this.nimcodeProcess.stdout.on('data', (data) => {
+                const lines = data.toString().split('\n');
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        this._panel.webview.postMessage(msg);
+                    } catch (e) {
+                        // Ignore non-JSON output (maybe debug prints)
+                    }
+                }
+            });
+        }
+
+        this.nimcodeProcess.on('close', (code) => {
+            this.nimcodeProcess = null;
+        });
     }
 
-    this.nimcodeProcess.on('close', (code) => {
-      this.nimcodeProcess = null;
-    });
-  }
+    public dispose() {
+        ChatPanel.currentPanel = undefined;
+        this._panel.dispose();
+        if (this.nimcodeProcess) {
+            this.nimcodeProcess.kill();
+        }
+        while (this._disposables.length) {
+            const disposable = this._disposables.pop();
+            if (disposable) {
+                disposable.dispose();
+            }
+        }
+    }
 
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    return `<!DOCTYPE html>
+    private _getHtmlForWebview() {
+        return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NimCode Chat</title>
   
-  <!-- Markdown & Highlighting -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
@@ -129,7 +175,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     body {
       font-family: var(--vscode-font-family);
       color: var(--vscode-editor-foreground);
-      background-color: var(--vscode-sideBar-background);
+      background-color: var(--vscode-editor-background);
       padding: 0;
       margin: 0;
       display: flex;
@@ -138,11 +184,11 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     }
 
     .header {
-      padding: 10px 16px;
+      padding: 12px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: var(--vscode-sideBarTitle-background);
+      background: var(--vscode-editorGroupHeader-tabsBackground);
       border-bottom: 1px solid var(--vscode-widget-border);
     }
     
@@ -150,7 +196,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       background: var(--vscode-dropdown-background);
       color: var(--vscode-dropdown-foreground);
       border: 1px solid var(--vscode-dropdown-border);
-      padding: 4px;
+      padding: 6px;
       border-radius: 4px;
       outline: none;
     }
@@ -158,18 +204,21 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .chat-container {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 24px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
     }
     
     .message {
-      padding: 14px;
+      padding: 16px 20px;
       border-radius: 8px;
       line-height: 1.6;
-      font-size: 13px;
-      max-width: 95%;
+      font-size: 14px;
+      max-width: 85%;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
@@ -185,10 +234,20 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     
     .message.assistant {
       align-self: flex-start;
-      background-color: var(--vscode-editor-background);
+      background-color: var(--vscode-editorWidget-background);
       border: 1px solid var(--vscode-widget-border);
       border-bottom-left-radius: 2px;
       width: 100%;
+    }
+    
+    .message.info {
+      align-self: center;
+      background-color: transparent;
+      color: var(--vscode-descriptionForeground);
+      border: none;
+      box-shadow: none;
+      text-align: center;
+      font-style: italic;
     }
     
     .message.tool-request {
@@ -206,23 +265,30 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     
     .tool-args {
       background: var(--vscode-textCodeBlock-background);
-      padding: 8px;
+      padding: 10px;
       border-radius: 4px;
       font-family: monospace;
-      font-size: 12px;
+      font-size: 13px;
       overflow-x: auto;
       margin-bottom: 12px;
     }
     
     .tool-actions {
       display: flex;
-      gap: 8px;
+      gap: 10px;
     }
 
     .input-container {
-      padding: 16px;
-      background-color: var(--vscode-sideBar-background);
+      padding: 20px 24px;
+      background-color: var(--vscode-editor-background);
       border-top: 1px solid var(--vscode-widget-border);
+      display: flex;
+      justify-content: center;
+    }
+    
+    .input-wrapper {
+      max-width: 900px;
+      width: 100%;
     }
     
     textarea {
@@ -230,10 +296,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       background-color: var(--vscode-input-background);
       color: var(--vscode-input-foreground);
       border: 1px solid var(--vscode-input-border);
-      padding: 12px;
+      padding: 14px;
       border-radius: 6px;
       font-family: inherit;
-      font-size: 13px;
+      font-size: 14px;
       resize: none;
       outline: none;
       box-sizing: border-box;
@@ -247,17 +313,18 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     .controls {
       display: flex;
       justify-content: space-between;
-      margin-top: 10px;
+      margin-top: 12px;
     }
     
     button {
       background-color: var(--vscode-button-background);
       color: var(--vscode-button-foreground);
       border: none;
-      padding: 6px 14px;
+      padding: 8px 16px;
       border-radius: 4px;
       cursor: pointer;
       font-weight: 500;
+      font-size: 14px;
     }
     
     button:hover { background-color: var(--vscode-button-hoverBackground); }
@@ -277,10 +344,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     /* Markdown Styles */
     pre {
       background-color: var(--vscode-textCodeBlock-background);
-      padding: 12px;
+      padding: 14px;
       border-radius: 6px;
       overflow-x: auto;
-      margin: 10px 0;
+      margin: 12px 0;
     }
     code { font-family: var(--vscode-editor-font-family); }
   </style>
@@ -288,9 +355,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 <body>
 
   <div class="header">
-    <div style="font-weight: 600;">NimCode AI</div>
-    <div style="display: flex; gap: 8px;">
-      <select id="model-select" title="AI Model" style="max-width: 150px; text-overflow: ellipsis;"></select>
+    <div style="font-weight: 600; font-size: 16px;">NimCode AI</div>
+    <div style="display: flex; gap: 12px;">
+      <select id="model-select" title="AI Model" style="max-width: 250px; text-overflow: ellipsis;"></select>
       <select id="mode-select" title="Permission Mode">
         <option value="default">Interactive</option>
         <option value="auto">Auto-Safe</option>
@@ -302,15 +369,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   <div class="chat-container" id="chat">
     <div class="message assistant">
       <p>Hello! I am NimCode, your AI coding assistant.</p>
-      <p>How can I help you today?</p>
+      <p>How can I help you today? You can type normal requests or use slash commands like <code>/help</code> or <code>/doctor</code>.</p>
     </div>
   </div>
   
   <div class="input-container">
-    <textarea id="prompt-input" rows="3" placeholder="Ask NimCode to build something... (Shift+Enter for new line)"></textarea>
-    <div class="controls">
-      <button class="secondary" id="clear-btn">Clear</button>
-      <button id="send-btn">Send</button>
+    <div class="input-wrapper">
+      <textarea id="prompt-input" rows="4" placeholder="Ask NimCode to build something... (Shift+Enter for new line)"></textarea>
+      <div class="controls">
+        <button class="secondary" id="clear-btn">Clear Context</button>
+        <button id="send-btn">Send Message</button>
+      </div>
     </div>
   </div>
 
@@ -323,7 +392,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     const modeSelect = document.getElementById('mode-select');
     const modelSelect = document.getElementById('model-select');
 
-    // Configure marked with highlight.js
     marked.setOptions({
       highlight: function(code, lang) {
         if (lang && hljs.getLanguage(lang)) {
@@ -347,16 +415,26 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     window.addEventListener('message', event => {
       const message = event.data;
       switch (message.type) {
+        case 'clear_ui':
+          chat.innerHTML = '<div class="message assistant"><p>Started a new session.</p></div>';
+          currentAssistantMessage = null;
+          break;
         case 'models_list':
           modelSelect.innerHTML = '';
           message.models.forEach(model => {
             const opt = document.createElement('option');
             opt.value = model;
-            // Simplify model name for display
             opt.textContent = model.split('/').pop();
             if (model === message.current) opt.selected = true;
             modelSelect.appendChild(opt);
           });
+          break;
+        case 'info':
+          const infoEl = document.createElement('div');
+          infoEl.className = 'message info';
+          infoEl.innerHTML = marked.parse(message.content);
+          chat.appendChild(infoEl);
+          chat.scrollTop = chat.scrollHeight;
           break;
         case 'chunk':
           if (!currentAssistantMessage) {
@@ -460,5 +538,5 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   </script>
 </body>
 </html>`;
-  }
+    }
 }

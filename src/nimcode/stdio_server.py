@@ -59,6 +59,35 @@ class StdioServer:
             
         self.agent._stream_response = stdio_stream_response
 
+        # Override rich.console.Console.print to capture slash command outputs and general prints
+        from rich.console import Console
+        original_print = Console.print
+        
+        def patched_print(console_self, *objects, **kwargs):
+            # Try to extract raw string from objects
+            text_parts = []
+            for obj in objects:
+                if isinstance(obj, str):
+                    text_parts.append(obj)
+                elif hasattr(obj, "__rich_console__") or hasattr(obj, "__rich_measure__"):
+                    # For complex rich objects (like Markdown), we could render it to text
+                    try:
+                        with console_self.capture() as capture:
+                            original_print(console_self, obj, **kwargs)
+                        text_parts.append(capture.get())
+                    except Exception:
+                        text_parts.append(str(obj))
+                else:
+                    text_parts.append(str(obj))
+                    
+            if text_parts:
+                content = " ".join(text_parts)
+                # Strip excessive ANSI codes if capture includes them, but we want plain text or markdown
+                # For simplicity, just send it to the UI
+                self.send_message({"type": "info", "content": content})
+                
+        Console.print = patched_print
+
     def send_message(self, message: dict):
         """Send a JSON message to original stdout."""
         try:

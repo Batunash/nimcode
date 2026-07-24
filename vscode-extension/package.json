@@ -3,7 +3,7 @@
   "displayName": "NimCode",
   "publisher": "Batunash",
   "description": "NimCode VS Code Extension",
-  "version": "0.0.2",
+  "version": "0.1.15",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -25,18 +25,43 @@
     "views": {
       "nimcode-sidebar": [
         {
-          "type": "webview",
-          "id": "nimcode.chatView",
-          "name": "Chat"
+          "id": "nimcode.sessionsView",
+          "name": "Sessions"
         }
       ]
     },
     "commands": [
       {
-        "command": "nimcode.startChat",
-        "title": "NimCode: Start Chat"
+        "command": "nimcode.newChat",
+        "title": "NimCode: New Chat",
+        "icon": "$(add)"
+      },
+      {
+        "command": "nimcode.openSession",
+        "title": "NimCode: Open Session"
+      },
+      {
+        "command": "nimcode.deleteSession",
+        "title": "NimCode: Delete Session",
+        "icon": "$(trash)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "nimcode.newChat",
+          "when": "view == nimcode.sessionsView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "nimcode.deleteSession",
+          "when": "view == nimcode.sessionsView",
+          "group": "inline"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
