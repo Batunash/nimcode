@@ -58,6 +58,13 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           }
           break;
         }
+        case 'set_model': {
+           if (this.nimcodeProcess && this.nimcodeProcess.stdin) {
+            const payload = JSON.stringify({ type: 'set_model', model: data.model });
+            this.nimcodeProcess.stdin.write(payload + '\n');
+          }
+          break;
+        }
       }
     });
 

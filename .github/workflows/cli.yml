@@ -1,15 +1,28 @@
-name: Publish to PyPI
+name: CLI CI/CD
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'nimcode/**'
+      - 'tests/**'
+      - 'setup.py'
+      - '.github/workflows/cli.yml'
     tags:
-      - 'v*'
+      - 'cli-v*'
+  pull_request:
+    paths:
+      - 'nimcode/**'
+      - 'tests/**'
+      - 'setup.py'
+      - '.github/workflows/cli.yml'
 
 permissions:
   contents: write
 
 jobs:
-  build-and-publish:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +41,24 @@ jobs:
           
       - name: Run tests
         run: |
-          pytest
+          pytest --cov=nimcode tests/
+          
+  publish:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
           
       - name: Build package
         run: python -m build
