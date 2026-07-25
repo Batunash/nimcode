@@ -8,11 +8,14 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 logger = logging.getLogger(__name__)
 
 class NimClient:
-    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.1-70b-instruct", timeout: float = 120.0):
+    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.1-70b-instruct", timeout: float = 120.0, max_retries: int = 15, retry_base_delay: float = 2.0, retry_max_delay: float = 60.0):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = None if timeout == 0 else timeout
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
+        self.retry_max_delay = retry_max_delay
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -20,13 +23,25 @@ class NimClient:
         }
         
     async def get_available_models(self) -> List[str]:
-        return [
-            "meta/llama-3.1-70b-instruct",
-            "meta/llama-3.1-8b-instruct",
-            "meta/llama-3.1-405b-instruct",
-            "nvidia/nemotron-4-340b-instruct",
-            "mistralai/mixtral-8x22b-instruct-v0.1"
-        ]
+        """Fetches available models from the NIM API. Falls back to known models on error."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers=self.headers,
+                    timeout=10.0
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    models = [m["id"] for m in data.get("data", []) if m.get("id")]
+                    if models:
+                        return sorted(models)
+        except Exception as e:
+            logger.debug(f"Failed to fetch models from API: {e}")
+        
+        # Fallback to known model list
+        from .model_registry import FALLBACK_MODELS
+        return FALLBACK_MODELS
 
     async def chat_one_shot(self, prompt: str) -> str:
         payload = {
@@ -91,9 +106,9 @@ class NimClient:
             "stream": stream
         }
         
-        max_retries = 15
-        base_delay = 2.0
-        max_delay = 60.0
+        max_retries = self.max_retries
+        base_delay = self.retry_base_delay
+        max_delay = self.retry_max_delay
         
         for attempt in range(max_retries):
             chunk_yielded = False

@@ -39,8 +39,18 @@ class PermissionEngine:
         args = tool_call.get("args", {})
         
         if not sys.stdin.isatty():
-            console.print(f"[yellow]Running non-interactive. Approving {tool_name} for tests.[/yellow]")
-            return True
+            # Non-interactive mode: only auto-approve safe tools + writes.
+            # Bash requires explicit opt-in via config.
+            from .config import load_settings
+            settings = load_settings()
+            safe_non_interactive = {"Read", "Glob", "Grep", "Write", "Edit", "ASTReplace"}
+            if tool_name in safe_non_interactive:
+                return True
+            if tool_name == "Bash" and settings.get("allow_bash_non_interactive", False):
+                console.print(f"[yellow]Non-interactive: Bash auto-approved via config.[/yellow]")
+                return True
+            console.print(f"[red]Non-interactive: {tool_name} DENIED (enable 'allow_bash_non_interactive' in settings to allow).[/red]")
+            return False
             
         while True:
             content = ""

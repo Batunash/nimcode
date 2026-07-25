@@ -8,8 +8,10 @@ def test_permission_bypass():
 
 def test_permission_readonly_blocked():
     engine = PermissionEngine(mode=PermissionMode.AUTO)
-    # Bash should still be checked (not returned True immediately) and if not interactive, returns True for now (which is a flaw but let's test current behavior)
-    assert engine.check_permission({"tool": "Bash", "args": {}}) == True
+    # In non-interactive mode (tests), Bash is now DENIED by default.
+    # Safe tools (Read, Glob, Grep) and Write/Edit are still auto-approved.
+    assert engine.check_permission({"tool": "Read", "args": {}}) == True
+    assert engine.check_permission({"tool": "Bash", "args": {}}) == False
 
 def test_permission_safe_tools():
     engine = PermissionEngine(mode=PermissionMode.DEFAULT)

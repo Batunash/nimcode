@@ -11,8 +11,13 @@ from .memory import MemoryManager
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are nimcode, an autonomous AI coding assistant.
-You have access to a set of tools to read, write, and execute code.
+import platform
+
+SYSTEM_PROMPT_TEMPLATE = """You are nimcode, an autonomous AI coding assistant. You are a senior-level developer who writes production-ready code.
+
+OPERATING SYSTEM: {os_name}
+SHELL: {shell_info}
+WORKING DIRECTORY: {cwd}
 
 CRITICAL INSTRUCTION FOR TOOL CALLING:
 You must output exactly ONE tool call per turn, formatted exactly as a fenced XML block.
@@ -20,35 +25,97 @@ DO NOT use Markdown code blocks for the tool call. DO NOT output multiple tool c
 
 Format:
 <tool_call>
-{"tool": "ToolName", "args": {"arg1": "val1"}}
+{{"tool": "ToolName", "args": {{"arg1": "val1"}}}}
 </tool_call>
 
 Available Tools:
-- Bash: {"tool": "Bash", "args": {"command": "string"}}
-- Read: {"tool": "Read", "args": {"file_path": "string"}}
-- Write: {"tool": "Write", "args": {"file_path": "string", "content": "string"}}
-- Edit: {"tool": "Edit", "args": {"file_path": "string", "old_string": "string", "new_string": "string"}}
-- Glob: {"tool": "Glob", "args": {"pattern": "string"}}
-- Grep: {"tool": "Grep", "args": {"query": "string", "directory": "string"}}
+- Bash: {{"tool": "Bash", "args": {{"command": "string"}}}}
+- Read: {{"tool": "Read", "args": {{"file_path": "string"}}}}
+- Write: {{"tool": "Write", "args": {{"file_path": "string", "content": "string"}}}}
+- Edit: {{"tool": "Edit", "args": {{"file_path": "string", "old_string": "string", "new_string": "string"}}}}
+- Glob: {{"tool": "Glob", "args": {{"pattern": "string"}}}}
+- Grep: {{"tool": "Grep", "args": {{"query": "string", "directory": "string"}}}}
 
-Before calling a tool, you may optionally use a <think> block to reason about your plan. This helps you execute complex tasks correctly.
-For example:
+Before calling a tool, you may optionally use a <think> block to reason about your plan.
 <think>
 I need to check the file contents first to see where the function is defined.
 </think>
 <tool_call>
-{"tool": "Read", "args": {"file_path": "main.py"}}
+{{"tool": "Read", "args": {{"file_path": "main.py"}}}}
 </tool_call>
 
-Workspace Guidelines:
-- When creating plans, store them inside the `.nimcode/plans/` directory (e.g., `.nimcode/plans/dino_game_plan.md`). Create this directory if it doesn't exist.
-- When creating or learning new skills/memories, store them as markdown files inside the `.nimcode/skills/` directory.
+WORKSPACE STRUCTURE:
+- The `.nimcode/` directory is YOUR workspace for plans, skills, and logs. It is NOT where user project code lives.
+  - `.nimcode/plans/` — Store step-by-step markdown plans here.
+  - `.nimcode/skills/` — Store custom guidelines, framework rules, or memories as markdown files.
+  - `.nimcode/history/` — File backups for /undo capabilities.
+- User's project code lives in the WORKING DIRECTORY root and its subdirectories.
+- NEVER write user's source code files inside `.nimcode/`. That directory is only for your internal data.
+- When the user asks you to create a file like `main.py`, `app.js`, etc., write it to the WORKING DIRECTORY, not `.nimcode/`.
+
+{os_specific_instructions}
+
+PLANNING MODE INSTRUCTIONS:
+When in /plan mode or asked to create a plan:
+1. FIRST: Read the project structure using Glob and Read tools. Understand what already exists.
+2. SECOND: Analyze the codebase — read key files, understand the architecture, dependencies, and patterns.
+3. THIRD: Write a DETAILED, ACTIONABLE plan that references actual files and code in the project.
+4. Your plan must include:
+   - Specific files to create/modify (with full paths)
+   - Actual code snippets or pseudocode for each change
+   - Dependencies to install
+   - Testing strategy
+   - Step-by-step execution order
+5. NEVER write generic project management templates (stakeholders, timelines, resources).
+6. NEVER use placeholders like [Insert Date] or [Insert Dependencies].
+7. A good plan is one that another developer could follow to implement the feature without asking questions.
+
+CODE EXECUTION INSTRUCTIONS:
+When asked to "execute", "implement", or "build" something:
+1. Write REAL, WORKING code — not echo statements or placeholder scripts.
+2. Create actual source files with production-quality code.
+3. Install dependencies, run tests, and verify your work.
+4. If a plan exists in `.nimcode/plans/`, follow it step by step.
 
 When you have completely fulfilled the user's request and have no more tools to run, output the word TASK_COMPLETE.
 """
 
+OS_INSTRUCTIONS_WINDOWS = """WINDOWS-SPECIFIC RULES:
+- Use backslash (\\) for file paths in Bash commands, or use forward slash (/) which also works on Windows.
+- Use PowerShell or cmd syntax: `mkdir .nimcode\\plans` (NOT `mkdir -p .nimcode/plans`).
+- Use `type` instead of `cat`, `dir` instead of `ls`, `copy` instead of `cp`.
+- Use `python` instead of `python3`.
+- For creating nested directories, use: `mkdir .nimcode\\plans 2>nul` or `New-Item -ItemType Directory -Force -Path .nimcode\\plans`
+- DO NOT use Unix-only commands like chmod, grep (use findstr), sed, awk.
+"""
+
+OS_INSTRUCTIONS_UNIX = """UNIX-SPECIFIC RULES:
+- Use forward slash (/) for file paths.
+- Use standard Unix commands: mkdir -p, cat, ls, cp, chmod.
+- Use `python3` if `python` is not available.
+"""
+
+
+def _build_system_prompt(cwd: str) -> str:
+    """Builds the system prompt with OS-aware instructions."""
+    os_name = platform.system()
+    if os_name == "Windows":
+        shell_info = "PowerShell / cmd.exe"
+        os_specific = OS_INSTRUCTIONS_WINDOWS
+    else:
+        shell_info = "bash / zsh"
+        os_specific = OS_INSTRUCTIONS_UNIX
+
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        os_name=os_name,
+        shell_info=shell_info,
+        cwd=cwd,
+        os_specific_instructions=os_specific,
+    )
+
+
 class Agent:
-    def __init__(self, api_key: str, model: str = None, max_turns: int = 30, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = 4000):
+    def __init__(self, api_key: str, model: str = None, max_turns: int = None, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = None):
         # Load global settings
         self.settings = load_settings()
         self.model = model or self.settings.get("model", "meta/llama-3.1-70b-instruct")
@@ -57,17 +124,21 @@ class Agent:
             api_key=api_key, 
             base_url=api_base_url, 
             model=self.model,
-            timeout=self.settings.get("timeout_llm", 120.0)
+            timeout=self.settings.get("timeout_llm", 120.0),
+            max_retries=self.settings.get("max_retries", 15),
+            retry_base_delay=self.settings.get("retry_base_delay", 2.0),
+            retry_max_delay=self.settings.get("retry_max_delay", 60.0),
         )
         
         # Initialize MCP Manager
         self.mcp = MCPManager(self.settings)
         
-        # Base system prompt
-        final_prompt = SYSTEM_PROMPT + self.mcp.get_system_prompt_additions()
+        # Build OS-aware system prompt
+        cwd = os.getcwd()
+        final_prompt = _build_system_prompt(cwd) + self.mcp.get_system_prompt_additions()
         
         # Load skills if present
-        skills_dir = os.path.join(os.getcwd(), ".nimcode", "skills")
+        skills_dir = os.path.join(cwd, ".nimcode", "skills")
         if os.path.exists(skills_dir) and os.path.isdir(skills_dir):
             loaded_skills = []
             for filename in os.listdir(skills_dir):
@@ -91,9 +162,16 @@ class Agent:
         self.messages: List[Dict[str, Any]] = [
             {"role": "system", "content": final_prompt}
         ]
-        self.max_turns = max_turns
+        
+        # Use config values with parameter overrides
+        cfg_max_turns = self.settings.get("max_turns", 200)
+        self.max_turns = max_turns if max_turns is not None else (0 if cfg_max_turns == 0 else cfg_max_turns)
+        
+        cfg_max_tokens = self.settings.get("max_tokens", 120000)
+        effective_max_tokens = max_tokens if max_tokens is not None else cfg_max_tokens
+        self.memory = MemoryManager(max_tokens=effective_max_tokens)
+        
         self.permission_engine = PermissionEngine(mode=permission_mode)
-        self.memory = MemoryManager(max_tokens=max_tokens)
 
     def save_history(self):
         """Saves current conversation to NIMCODE.md"""
@@ -190,7 +268,8 @@ class Agent:
         import json
         total_context_chars = sum(len(str(m.get("content", ""))) for m in self.messages)
         total_est_tokens = total_context_chars // 4
-        max_context = 128000  # Assume standard Llama-3.1 128k context for now
+        from .model_registry import get_context_window
+        max_context = get_context_window(self.model)
         if total_est_tokens > max_context * 0.8:
             c.print("[bold yellow]⚠️ Context window is over 80% full. Consider running /compact or /clear.[/bold yellow]")
             
@@ -204,7 +283,9 @@ class Agent:
         while turn < max_turns:
             turn += 1
             try:
-                response_text = await self.client.chat_one_shot(self.messages)
+                # Build a combined prompt from messages for one-shot call
+                combined = "\n".join(f"{m['role'].upper()}: {m.get('content','')}" for m in self.messages)
+                response_text = await self.client.chat_one_shot(combined)
             except Exception as e:
                 return f"Subagent error: {e}"
                 
@@ -233,13 +314,12 @@ class Agent:
         if not old_msgs:
             return self.messages
             
-        summary_prompt = "Please summarize the following conversation concisely. Focus on the final state, any completed goals, and any context needed for the next steps:\n\n"
+        summary_prompt = "You are a summarization AI. Please summarize the following conversation concisely. Focus on the final state, any completed goals, and any context needed for the next steps:\n\n"
         for m in old_msgs:
             summary_prompt += f"{m['role'].upper()}: {str(m['content'])[:500]}...\n"
             
-        messages = [{"role": "system", "content": "You are a summarization AI."}, {"role": "user", "content": summary_prompt}]
         try:
-            summary = await self.client.chat_one_shot(messages)
+            summary = await self.client.chat_one_shot(summary_prompt)
             system_msg["content"] += f"\n\n[PREVIOUS MEMORY SUMMARY]\n{summary}"
         except Exception as e:
             logger.error(f"Distillation failed: {e}")
@@ -256,7 +336,7 @@ class Agent:
         
         cwd = os.getcwd()
         turn = 0
-        while turn < self.max_turns:
+        while self.max_turns == 0 or turn < self.max_turns:
             turn += 1
             logger.info(f"--- Turn {turn} ---")
             

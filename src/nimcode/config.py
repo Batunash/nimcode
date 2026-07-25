@@ -11,11 +11,20 @@ def load_settings() -> Dict[str, Any]:
         "model": "meta/llama-3.1-70b-instruct",
         "api_base_url": "https://integrate.api.nvidia.com/v1",
         "mcp_servers": {},
+        # Timeouts (0 = disabled/infinite)
         "timeout_command": 1200,    # Timeout for bash commands (seconds)
         "timeout_llm": 120,         # Timeout for LLM API calls (seconds)
         "timeout_format": 10,       # Timeout for formatting/linting tools (seconds)
         "timeout_browser": 15000,   # Timeout for browser actions (milliseconds)
-        "timeout_updater": 3        # Timeout for update checks (seconds)
+        "timeout_updater": 3,       # Timeout for update checks (seconds)
+        # Agent behavior
+        "max_turns": 200,           # Max agent turns per session (0 = unlimited)
+        "max_tokens": 120000,       # Token budget before auto-compact kicks in
+        "max_retries": 15,          # Max LLM API retry attempts on transient errors
+        "retry_base_delay": 2.0,    # Base delay for exponential backoff (seconds)
+        "retry_max_delay": 60.0,    # Max delay cap for exponential backoff (seconds)
+        # Security
+        "allow_bash_non_interactive": False,  # Allow Bash in non-interactive (CI) mode
     }
     
     # Global settings

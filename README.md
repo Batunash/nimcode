@@ -121,19 +121,39 @@ NimCode creates a `.nimcode` directory inside your projects. This directory acts
 - `.nimcode/skills/`: Any custom guidelines, framework rules, or memories you teach the agent.
 - `.nimcode/history/`: File backups for `/undo` capabilities.
 
-### Advanced Configuration (Timeouts)
+### Advanced Configuration
 
-NimCode's limits and timeouts can be customized through the `.nimcode/settings.json` file. Setting any timeout to `0` will completely disable it (infinite timeout).
+NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (global) or `.nimcode/settings.json` (per-project). Setting any timeout to `0` disables it (infinite).
 
 ```json
 {
-    "timeout_command": 1200,    // Max time for bash commands (in seconds)
-    "timeout_llm": 120,         // Max time for LLM API responses (in seconds)
-    "timeout_format": 10,       // Max time for auto-formatters like black/prettier
-    "timeout_browser": 15000,   // Max time for browser operations (in milliseconds)
-    "timeout_updater": 3        // Max time for update checks
+    "timeout_command": 1200,
+    "timeout_llm": 120,
+    "timeout_format": 10,
+    "timeout_browser": 15000,
+    "timeout_updater": 3,
+    "max_turns": 200,
+    "max_tokens": 120000,
+    "max_retries": 15,
+    "retry_base_delay": 2.0,
+    "retry_max_delay": 60.0,
+    "allow_bash_non_interactive": false
 }
 ```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `timeout_command` | 1200 | Max seconds for bash commands (0 = infinite) |
+| `timeout_llm` | 120 | Max seconds for LLM API calls (0 = infinite) |
+| `timeout_format` | 10 | Max seconds for formatters like black/prettier |
+| `timeout_browser` | 15000 | Max ms for browser actions |
+| `timeout_updater` | 3 | Max seconds for update checks |
+| `max_turns` | 200 | Max agent turns per session (0 = unlimited) |
+| `max_tokens` | 120000 | Token budget before auto-compact |
+| `max_retries` | 15 | Max API retry attempts on transient errors |
+| `retry_base_delay` | 2.0 | Base delay for exponential backoff (seconds) |
+| `retry_max_delay` | 60.0 | Max delay cap for backoff (seconds) |
+| `allow_bash_non_interactive` | false | Allow Bash commands in non-interactive/CI mode |
 
 ## 🛡️ Requirements
 

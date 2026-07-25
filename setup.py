@@ -1,8 +1,14 @@
 from setuptools import setup, find_packages
+import os
+
+# Single source of truth for version
+version = {}
+with open(os.path.join("src", "nimcode", "__version__.py")) as f:
+    exec(f.read(), version)
 
 setup(
     name="nimcode",
-    version="0.3.4",
+    version=version["__version__"],
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[

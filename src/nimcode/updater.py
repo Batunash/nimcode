@@ -3,7 +3,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-CURRENT_VERSION = "3.0.0"
+from .__version__ import __version__ as CURRENT_VERSION
 
 class AutoUpdater:
     @staticmethod

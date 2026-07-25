@@ -9,6 +9,16 @@ def test_load_settings_default():
         settings = load_settings()
         assert settings["model"] == "meta/llama-3.1-70b-instruct"
         assert settings["mcp_servers"] == {}
+        # New configurable settings
+        assert settings["max_turns"] == 200
+        assert settings["max_tokens"] == 120000
+        assert settings["max_retries"] == 15
+        assert settings["retry_base_delay"] == 2.0
+        assert settings["retry_max_delay"] == 60.0
+        assert settings["allow_bash_non_interactive"] == False
+        # Timeouts
+        assert settings["timeout_command"] == 1200
+        assert settings["timeout_llm"] == 120
 
 def test_load_settings_global_only():
     mock_global = '{"model": "global_model", "mcp_servers": {"global": {}}}'

@@ -531,17 +531,30 @@ class NimcodeREPL:
                     self.messages.append({"role": "system", "content": "You are the Application Guardian. Your sole priority is preventing regressions. Before making any code changes, ensure you write a test first. If a user asks for a breaking change, warn them aggressively."})
                     continue
                 elif user_input.strip() == "/thinkback":
-                    console.print("[bold blue]⏪ Entering Agent Replay Mode (Thinkback)[/bold blue]")
+                    console.print("[bold blue]⏪ Agent Replay (Thinkback)[/bold blue]")
                     from rich.table import Table
-                    table = Table(title="Recent Agent Actions")
+                    table = Table(title="Session History")
                     table.add_column("Turn", style="cyan")
-                    table.add_column("Tokens", style="yellow")
-                    table.add_column("Tools Called", style="green")
-                    table.add_row("1", "450", "Read, Glob")
-                    table.add_row("2", "1200", "Bash, Write")
-                    table.add_row("3", "300", "StartTerminal")
-                    console.print(table)
-                    console.print("[dim]Note: Full replay logs are stored in .nimcode/logs/[/dim]")
+                    table.add_column("Role", style="yellow")
+                    table.add_column("Tokens (est.)", style="green")
+                    table.add_column("Preview", style="dim", max_width=60)
+                    turn_num = 0
+                    for msg in self.messages[1:]:  # Skip system prompt
+                        role = msg.get("role", "?")
+                        content = str(msg.get("content", ""))
+                        est_tokens = len(content) // 4 + 1
+                        preview = content[:80].replace("\n", " ")
+                        if len(content) > 80:
+                            preview += "..."
+                        if role == "user":
+                            turn_num += 1
+                        table.add_row(str(turn_num), role, str(est_tokens), preview)
+                    if turn_num == 0:
+                        console.print("[dim]No conversation history yet.[/dim]")
+                    else:
+                        console.print(table)
+                        total_tokens = sum(len(str(m.get("content", ""))) // 4 + 1 for m in self.messages)
+                        console.print(f"[dim]Total messages: {len(self.messages)} | Est. total tokens: {total_tokens}[/dim]")
                     continue
                 elif user_input.strip().startswith("/fix"):
                     parts = user_input.strip().split(" ", 1)
