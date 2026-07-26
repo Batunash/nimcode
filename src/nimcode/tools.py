@@ -21,9 +21,11 @@ class ToolRegistry:
                 "required": ["command"]
             },
             "Read": {
-                "description": "Read the contents of a file.",
+                "description": "Read the contents of a file. For large files, use offset/limit to paginate instead of loading the whole file at once.",
                 "parameters": {
-                    "file_path": {"type": "string", "description": "Path to the file to read."}
+                    "file_path": {"type": "string", "description": "Path to the file to read."},
+                    "offset": {"type": "integer", "description": "1-based line number to start reading from. Omit to start at the beginning.", "default": 1},
+                    "limit": {"type": "integer", "description": "Maximum number of lines to return. Omit for the whole file (may be large).", "default": 0}
                 },
                 "required": ["file_path"]
             },
@@ -169,7 +171,7 @@ class ToolRegistry:
             if tool_name == "Bash":
                 return cls._execute_bash(args["command"], cwd, args.get("background", False))
             elif tool_name == "Read":
-                return cls._execute_read(args["file_path"], cwd)
+                return cls._execute_read(args["file_path"], cwd, args.get("offset", 1), args.get("limit", 0))
             elif tool_name == "Write":
                 return cls._execute_write(args["file_path"], args["content"], cwd)
             elif tool_name == "Replace":
@@ -366,23 +368,52 @@ class ToolRegistry:
             return f"Search error: {e}"
 
     @staticmethod
-    def _execute_read(file_path: str, cwd: str) -> str:
+    def _execute_read(file_path: str, cwd: str, offset: int = 1, limit: int = 0) -> str:
         full_path = os.path.join(cwd, file_path)
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
         if os.path.isdir(full_path):
             raise ToolError(f"Path is a directory, not a file: {file_path}")
-            
+
         mtime = os.path.getmtime(full_path)
-        if full_path in ToolRegistry._FILE_CACHE:
-            cached_mtime, cached_content = ToolRegistry._FILE_CACHE[full_path]
+        # Cache only the FULL, unpaginated file; paginated reads bypass cache to stay cheap.
+        cache_key = full_path
+        if offset <= 1 and limit == 0 and cache_key in ToolRegistry._FILE_CACHE:
+            cached_mtime, cached_content = ToolRegistry._FILE_CACHE[cache_key]
             if cached_mtime == mtime:
                 return cached_content
-                
+
         with open(full_path, "r", encoding="utf-8") as f:
-            content = f.read()
+            all_lines = f.readlines()
+
+        total = len(all_lines)
+        offset = max(1, int(offset))
+
+        # No limit → whole file (and cache it).
+        if limit == 0:
+            content = "".join(all_lines)
             ToolRegistry._FILE_CACHE[full_path] = (mtime, content)
             return content
+
+        # Paginated read: slice lines, annotate with line numbers and a continuation hint.
+        start_idx = offset - 1
+        end_idx = min(start_idx + int(limit), total)
+        selected = all_lines[start_idx:end_idx]
+
+        out_lines = []
+        for i, line in enumerate(selected, start=offset):
+            # Strip the trailing newline since we add our own line-numbered line.
+            out_lines.append(f"{i:>6}\t{line.rstrip(chr(10))}")
+
+        body = "\n".join(out_lines)
+        shown = end_idx - start_idx
+        remaining = total - end_idx
+        header = f"(showing lines {offset}-{end_idx} of {total}"
+        if remaining > 0:
+            header += f"; {remaining} more — pass offset={end_idx + 1} to continue)"
+        else:
+            header += ")"
+        return f"{header}\n{body}"
 
     @staticmethod
     def _execute_write(file_path: str, content: str, cwd: str) -> str:

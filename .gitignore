@@ -26,5 +26,6 @@ htmlcov/
 .vscode/
 .idea/
 
-# NimCode specifics (Don't push secrets)
+# NimCode specifics (Don't push secrets or session data)
 .nimcode/settings.json
+NIMCODE.md

@@ -30,11 +30,12 @@ Format:
 
 Available Tools:
 - Bash: {{"tool": "Bash", "args": {{"command": "string"}}}}
-- Read: {{"tool": "Read", "args": {{"file_path": "string"}}}}
+- Read: {{"tool": "Read", "args": {{"file_path": "string", "offset": "int (optional, 1-based line number to start from)", "limit": "int (optional, max number of lines to return)"}}}}
 - Write: {{"tool": "Write", "args": {{"file_path": "string", "content": "string"}}}}
 - Edit: {{"tool": "Edit", "args": {{"file_path": "string", "old_string": "string", "new_string": "string"}}}}
 - Glob: {{"tool": "Glob", "args": {{"pattern": "string"}}}}
 - Grep: {{"tool": "Grep", "args": {{"query": "string", "directory": "string"}}}}
+- AskQuestion: {{"tool": "AskQuestion", "args": {{"question": "string", "options": ["string (optional list of choices)"]}}}} — Ask the USER a clarifying question when requirements are ambiguous. Wait for their reply before continuing. Preferred in /grill-me, /plan, and whenever you lack information.
 
 Before calling a tool, you may optionally use a <think> block to reason about your plan.
 <think>
@@ -173,21 +174,40 @@ class Agent:
         
         self.permission_engine = PermissionEngine(mode=permission_mode)
 
+    def _session_history_path(self) -> str:
+        """Path for serialized session history.
+
+        Uses a fresh '.nimcode/sessions/' subdir — NOT '.nimcode/history/' — because
+        repl.py's PromptSession already uses '.nimcode/history' as a *file* for
+        prompt_toolkit FileHistory. A path cannot be both a file and a directory:
+        trying to makedirs('.nimcode/history') while FileHistory treats it as a file
+        raises NotADirectoryError, which save_history's try/except would silently
+        swallow (re-breaking --resume). 'sessions' is collision-free. This also keeps
+        session JSON separate from NIMCODE.md, the human-readable log appended by
+        MemoryManager.log_to_nimcode_md — fixing the original Bug B (two producers
+        overwriting each other -> JSONDecodeError on load)."""
+        return os.path.join(os.getcwd(), ".nimcode", "sessions", "session.json")
+
     def save_history(self):
-        """Saves current conversation to NIMCODE.md"""
+        """Saves current conversation (machine-readable JSON) to .nimcode/sessions/session.json."""
         try:
             import json
-            with open("NIMCODE.md", "w", encoding="utf-8") as f:
+            path = self._session_history_path()
+            # Ensure the parent dir exists (handles one-shot `nimcode "prompt"` and
+            # `--resume` paths that don't go through the REPL's .nimcode bootstrap).
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
                 json.dump(self.messages, f)
         except Exception as e:
             logger.error(f"Failed to save history: {e}")
 
     def load_history(self):
-        """Loads conversation from NIMCODE.md"""
+        """Loads conversation from .nimcode/sessions/session.json (if present)."""
         try:
             import json
-            if os.path.exists("NIMCODE.md"):
-                with open("NIMCODE.md", "r", encoding="utf-8") as f:
+            path = self._session_history_path()
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
                     self.messages = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load history: {e}")

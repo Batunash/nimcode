@@ -429,9 +429,29 @@ class NimcodeREPL:
                         console.print(f"[bold red]{result}[/bold red]")
                     continue
                 elif user_input.strip() == "/plan":
-                    console.print("[bold blue]Entering Plan mode.[/bold blue] Mutating tools will be denied by default.")
-                    self.permission_engine.mode = PermissionMode.DEFAULT
-                    self.messages.append({"role": "system", "content": "You are now in planning mode. Use Read tools to explore. Then use the Write tool to write a markdown plan file inside the '.nimcode/plans/' directory (e.g., '.nimcode/plans/feature_x_plan.md'). Do NOT use Bash or Edit tools."})
+                    # Save current mode so /code can restore it when leaving plan mode.
+                    if not getattr(self, "_in_plan_mode", False):
+                        self._pre_plan_mode = self.permission_engine.mode
+                    self._in_plan_mode = True
+                    # Respect /trust: never downgrade BYPASS. Otherwise AUTO = safe reads free, writes restricted.
+                    if self.permission_engine.mode != PermissionMode.BYPASS:
+                        self.permission_engine.mode = PermissionMode.AUTO
+                    console.print("[bold blue]Entering Plan mode.[/bold blue] Read tools are free; mutating tools (Bash/Edit/Write) are restricted.")
+                    self.messages.append({"role": "system", "content": (
+                        "You are now in PLANNING MODE.\n"
+                        "1. Use Glob/Grep/Read to explore the user's project OR the documents they named (e.g. 'sdd.md').\n"
+                        "2. BASE your plan on the ACTUAL content of those documents/files. Quote real names, real modules, "
+                        "real requirements found during exploration. Do NOT invent a generic project.\n"
+                        "3. Write the plan to a file inside '.nimcode/plans/'. CHOOSE a descriptive name derived from the task "
+                        "or document (e.g. 'imagease_pro_implementation_plan.md'), NOT 'feature_x_plan.md'.\n"
+                        "4. The plan must reference real files, real code, and real requirements found during exploration. "
+                        "Include specific files to create/modify (with full paths), actual code snippets or pseudocode for each "
+                        "change, dependencies to install, testing strategy, and step-by-step execution order.\n"
+                        "5. NEVER output a generic software-lifecycle template (Phase1: Research / Design / Development / "
+                        "Testing / Deployment) unless that is literally what the documents describe. NEVER use placeholders "
+                        "like [Insert Date].\n"
+                        "6. A good plan is one that another developer could follow to implement the feature without asking questions."
+                    )})
                     continue
                 elif user_input.strip().startswith("/teleport"):
                     parts = user_input.strip().split(" ", 1)
@@ -591,21 +611,25 @@ class NimcodeREPL:
                     user_input = "Decompile binary."
                 elif user_input.strip() == "/grill-me":
                     console.print("[bold red]🔥 Entering Interrogation Mode. NimCode will now grill you about your code! 🔥[/bold red]")
-                    self.messages.append({"role": "user", "content": "I want to refine my design. Please use the 'AskQuestion' tool to interrogate me about edge cases, architecture, and requirements for what I'm currently working on."})
+                    self.messages.append({"role": "user", "content": "I want to refine my design. Please use the 'AskQuestion' tool to interrogate me about edge cases, architecture, and requirements for what I'm currently working on. Ask one focused question at a time, then wait for my reply before asking the next."})
                     # Do not continue, let it fall through to process the message and call the tool
                     user_input = "Please start asking questions."
                 elif user_input.strip() == "/code":
                     console.print("[bold magenta]Entering Code mode.[/bold magenta] Standard permissions restored.")
+                    # Restore the permission mode that was active before /plan downgraded it.
+                    if getattr(self, "_in_plan_mode", False) and hasattr(self, "_pre_plan_mode"):
+                        self.permission_engine.mode = self._pre_plan_mode
+                        self._in_plan_mode = False
                     self.messages.append({"role": "system", "content": "You are now in coding mode. You may use all available tools."})
                     continue
                 elif user_input.strip() == "/trust":
                     self.agent.permission_engine.mode = PermissionMode.BYPASS
-                    self.agent.max_turns = 999999  # Effectively infinite for autonomous looping
+                    self.agent.max_turns = 0  # 0 = unlimited (agent.py loop: `while max_turns == 0 or turn < max_turns`)
                     console.print("[bold red]🚨 TRUST MODE ACTIVATED: NimCode will now run all tools without asking for permission and has NO TURN LIMIT! 🚨[/bold red]")
                     continue
                 elif user_input.strip() == "/untrust":
                     self.agent.permission_engine.mode = PermissionMode.DEFAULT
-                    self.agent.max_turns = self.settings.get("max_turns", 30)
+                    self.agent.max_turns = self.settings.get("max_turns", 200)
                     console.print("[bold green]🛡️ Trust mode disabled. NimCode will ask for permission and turn limits are restored.[/bold green]")
                     continue
                 elif user_input.strip().startswith("/theme"):
@@ -1152,15 +1176,6 @@ class NimcodeREPL:
                             return
                         except subprocess.CalledProcessError as e:
                             console.print(f"[bold red]Update failed: {e}[/bold red]")
-                    continue
-                elif user_input.strip() == "/undo":
-                    from .tools import ToolRegistry
-                    import os
-                    result = ToolRegistry._execute_undo(os.getcwd())
-                    if "Successfully" in result:
-                        console.print(f"[bold green]✅ {result}[/bold green]")
-                    else:
-                        console.print(f"[bold red]❌ {result}[/bold red]")
                     continue
                 elif user_input.strip().startswith("/"):
                     import difflib

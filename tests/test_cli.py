@@ -4,6 +4,43 @@ import os
 from unittest.mock import patch, MagicMock
 from nimcode.cli import main, run_login, run_doctor, install_hook
 
+# --- Bug 3 regression: Ctrl+C must produce a clean exit, never a traceback ----
+# On Windows (ProactorEventLoop) a Ctrl+C during an active `await` surfaces as
+# a KeyErrorInterrupt propagated out of `asyncio.run`. Fix #3 wrapped every
+# `asyncio.run(...)` call in `main()` with a top-level `except KeyboardInterrupt`
+# that prints a clean message and returns. These tests verify that guard.
+
+def test_main_repl_keyboard_interrupt_clean_exit():
+    """REPL path: a KeyboardInterrupt escaping asyncio.run must be swallowed by
+    main()'s top-level guard and produce the 'Interrupted' message — NOT
+    propagate as an ugly traceback."""
+    with patch("sys.argv", ["nimcode"]):
+        with patch("nimcode.cli.load_settings", return_value={"api_key": "k"}):
+            with patch("nimcode.agent.Agent"):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("nimcode.cli.asyncio.run", side_effect=KeyboardInterrupt):
+                        with patch("nimcode.cli.console.print") as mock_print:
+                            # Must NOT raise — the guard returns cleanly.
+                            main()
+                            mock_print.assert_any_call(
+                                "\n[bold yellow]Interrupted. Exiting NimCode.[/bold yellow]"
+                            )
+
+def test_main_prompt_keyboard_interrupt_clean_exit():
+    """Prompt (non-interactive) path: same guard must hold when Ctrl+C lands
+    mid-`agent.run(...)`."""
+    with patch("sys.argv", ["nimcode", "do task", "--api-key", "key"]):
+        with patch("nimcode.cli.load_settings", return_value={}):
+            with patch("nimcode.agent.Agent"):
+                with patch("sys.stdin.isatty", return_value=True):
+                    with patch("nimcode.cli.asyncio.run", side_effect=KeyboardInterrupt):
+                        with patch("nimcode.cli.console.print") as mock_print:
+                            main()
+                            mock_print.assert_any_call(
+                                "\n[bold yellow]Interrupted. Exiting NimCode.[/bold yellow]"
+                            )
+
+
 def test_run_login():
     with patch("getpass.getpass", return_value="my_key"):
         with patch("nimcode.cli.save_global_setting") as mock_save:

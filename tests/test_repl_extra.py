@@ -50,7 +50,13 @@ async def test_repl_history_dir_missing(agent):
                         await repl.start_repl()
                     except StopAsyncIteration:
                         pass
-            mock_makedirs.assert_called_once()
+            # Intent: when '.nimcode' is missing, the REPL bootstraps it. We assert
+            # the project `.nimcode` dir is created, without pinning an exact call
+            # count — save_history (on `/exit`) also creates `.nimcode/sessions/`
+            # for the serialized session, which is legitimate expected behavior.
+            project_nimcode = os.path.join(os.getcwd(), ".nimcode")
+            mock_makedirs.assert_any_call(project_nimcode, exist_ok=True)
+            assert mock_makedirs.call_count >= 1
 
 @pytest.mark.asyncio
 async def test_repl_exceptions_in_loop(agent):
