@@ -1,5 +1,6 @@
 from setuptools import setup, find_packages
 import os
+from pathlib import Path
 
 # Single source of truth for version
 version = {}
@@ -25,4 +26,8 @@ setup(
     },
     author="Autonomous Agent",
     description="A standalone, robust coding agent for NVIDIA NIM models.",
+    long_description=Path("README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
+    url="https://github.com/Batunash/nimcode",
+    python_requires=">=3.8",
 )
