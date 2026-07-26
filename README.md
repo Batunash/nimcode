@@ -15,17 +15,22 @@
 
 ## 🌟 Overview
 
-NimCode is your autonomous coding pair-programmer. Built with a rich interactive terminal interface, it doesn't just autocomplete code—it plans architectures, executes terminal commands, writes complete files, formats code automatically, and manages your workspace. 
+NimCode is your autonomous coding pair-programmer. Built with a rich interactive terminal interface, it doesn't just autocomplete code—it plans architectures based on real documents (SDD, PRD, RFC), executes terminal commands, writes complete files, and manages your workspace.
 
-### 🛠️ What We've Built So Far
+### ✅ What Works Right Now
+- **OS-Aware Agent**: Automatically detects Windows/Linux/macOS and uses the correct shell commands. No more `mkdir -p` on Windows.
+- **SDD/PRD-Aware Planning**: `/plan` mode reads your actual documents and produces implementation plans grounded in real file names, modules, and requirements—not generic PM templates.
+- **Paginated File Reading**: Large files (like SDDs) are read in chunks with `offset`/`limit` so nothing gets truncated.
 - **VS Code Deep Integration**: Native IPC communication allowing NimCode to read active editors, send patches, and act as your intelligent coding panel within VS Code.
 - **RAG & Semantic Search**: Zero-dependency TF-IDF/BM25 based indexer that instantly scans massive workspaces and retrieves context-aware code snippets.
-- **Autonomous Auto-Fixer**: The `/fix` command creates a self-healing feedback loop—it runs your broken commands, analyzes the tracebacks, and automatically iterates on code patches until the build passes.
-- **Multi-Model & Local Support**: Flexible `api_base_url` configuration to seamlessly switch between NVIDIA NIM, Ollama, or vLLM endpoints.
-- **Smart Permission Engine**: Granular control over file writes and command executions, featuring an auto-bypass mechanism and interactive `(a)ccept / (r)eject` diff previews.
+- **Autonomous Auto-Fixer**: The `/fix` command creates a self-healing feedback loop—runs your broken commands, analyzes tracebacks, and automatically iterates on code patches until the build passes.
+- **Multi-Model & Local Support**: Flexible `api_base_url` configuration to seamlessly switch between NVIDIA NIM, Ollama, or vLLM endpoints. Dynamic model list fetched from the API at runtime.
+- **Smart Permission Engine**: Granular control over file writes and command executions, featuring an auto-bypass mechanism and interactive `(a)ccept / (r)eject` diff previews. Non-interactive/CI mode is secure by default (Bash denied unless explicitly allowed).
 - **Robust Interactive REPL**: Multiline support (Alt+Enter), syntax highlighting, and beautiful `rich`-powered UI menus.
 - **Automated Workflows**: Automatic linting and formatting using `black`, `flake8`, and `prettier` behind the scenes.
 - **Model Context Protocol (MCP)**: Native integration for MCP tools allowing infinite extensibility.
+- **Context Management**: Auto-compact with per-model context window awareness. `/thinkback` shows real session statistics.
+- **Live Sync**: Workspace watcher automatically updates the repo map in the agent's context when files change.
 
 ### 🚀 What We're Working On (Roadmap)
 - **Sub-agent Swarms**: Perfecting `/delegate` and `/swarm` to distribute complex tasks among specialized AI roles.
@@ -35,13 +40,17 @@ NimCode is your autonomous coding pair-programmer. Built with a rich interactive
 
 ---
 
-## 📦 Installation
-
-NimCode is available globally via PyPI. You can install it anywhere in seconds:
+## 📦 Installation & Update
 
 ```bash
+# First time install
 pip install nimcode
+
+# Update to latest version
+pip install --upgrade nimcode
 ```
+
+> **⚠️ If NimCode shows an old version number at startup**, you likely have an older install. Run `pip install --upgrade nimcode` to get the latest fixes.
 
 ## 🚀 Quick Start
 
@@ -64,17 +73,17 @@ pip install nimcode
 
 ## 💻 Complete Command Reference
 
-Inside the `nimcode` REPL, you can type natural language or use any of the following slash commands to trigger specific workflows:
+Inside the `nimcode` REPL, you can type natural language or use any of the following slash commands:
 
 ### Mode Toggles & Execution
 - **`/code`**: Enter standard coding mode (default mode, prompts for dangerous actions).
-- **`/plan`**: Enter planning mode (read-only safe mode). The AI will research and write a markdown plan before modifying code.
-- **`/trust`**: Enter trust mode. The AI will run commands and edit files completely autonomously without asking for `(a)ccept / (r)eject`.
+- **`/plan`**: Enter planning mode. NimCode will **read your actual documents/files first**, then write a concrete implementation plan to `.nimcode/plans/`.
+- **`/trust`**: Enter trust mode. The AI will run commands and edit files completely autonomously without asking for `(a)ccept / (r)eject`. Turn limit removed.
 - **`/untrust`**: Disable trust mode and restore permission prompts.
 
 ### Interface & Settings
-- **`/models`**: Open an interactive UI to select your preferred NVIDIA NIM model (e.g., meta/llama-3.1-70b-instruct).
-- **`/theme`**: Open an interactive UI to change your syntax highlighting theme (e.g., monokai, dracula, nord, github).
+- **`/models`**: Open an interactive UI to select your preferred NVIDIA NIM model.
+- **`/theme`**: Open an interactive UI to change your syntax highlighting theme.
 - **`/config`**: View and edit global NimCode configuration settings.
 
 ### Workspace & Context Management
@@ -83,6 +92,7 @@ Inside the `nimcode` REPL, you can type natural language or use any of the follo
 - **`/context`**: View and manage the loaded context window.
 - **`/rewind`**: Rewind the conversation history by a few steps.
 - **`/undo`**: Revert the last file modification made by the AI.
+- **`/thinkback`**: View real session statistics (turns, token estimates, message history).
 
 ### Project & Search
 - **`/index`**: Index the current project files to enable lightning-fast Semantic Search.
@@ -99,9 +109,7 @@ Inside the `nimcode` REPL, you can type natural language or use any of the follo
 - **`/tdd`**: Enter Test-Driven Development mode. The AI will write tests first, verify they fail, and then implement the code to pass them.
 - **`/bughunter`**: Initiate an automated search for logical bugs and edge cases across the codebase.
 - **`/security-review`**: Audit the codebase for common vulnerabilities (e.g., OWASP top 10).
-- **`/sql-tune`**: Database telepathy mode. Analyzes and auto-tunes SQL queries for maximum performance.
-- **`/terraform-god`**: Cloud architect mode. Auto-provisions scalable best-practice Terraform infrastructure.
-- **`/decompile <binary>`**: Reverse engineering mode using tools like `objdump` and `radare2`.
+- **`/ultraplan <task>`**: Generate a master ultra-detailed, dependency-graphed execution plan.
 
 ### AI & Agents
 - **`/delegate <role> <task>`**: Spawn an independent sub-agent with a specific role to handle a background task.
@@ -109,17 +117,18 @@ Inside the `nimcode` REPL, you can type natural language or use any of the follo
 - **`/grill-me`**: Interrogation mode. The AI will ask *you* hard questions to refine your system design and edge cases.
 - **`/learn`**: Teach NimCode a new persistent skill or framework rule that it will remember for future sessions.
 - **`/vision`**: Capture the screen and analyze UI elements using Vision AI models.
-- **`/voice`**: Record your voice for 5 seconds and transcribe it as a prompt.
 - **`/mcp install`**: Install and configure new Model Context Protocol tools.
 
 ---
 
 ## ⚙️ How it Works
 
-NimCode creates a `.nimcode` directory inside your projects. This directory acts as the "brain" for that specific workspace:
-- `.nimcode/plans/`: All your generated step-by-step markdown plans live here.
-- `.nimcode/skills/`: Any custom guidelines, framework rules, or memories you teach the agent.
+NimCode creates a `.nimcode` directory inside your projects. This directory acts as the **agent's personal workspace**, not your project's source code:
+- `.nimcode/plans/`: All generated step-by-step markdown plans live here.
+- `.nimcode/skills/`: Custom guidelines, framework rules, or memories you teach the agent.
 - `.nimcode/history/`: File backups for `/undo` capabilities.
+
+> **Important**: NimCode writes your actual source code to your project root, not inside `.nimcode/`. The `.nimcode/` folder is only for the agent's internal notes.
 
 ### Advanced Configuration
 
@@ -127,6 +136,8 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ```json
 {
+    "model": "meta/llama-3.1-70b-instruct",
+    "api_base_url": "https://integrate.api.nvidia.com/v1",
     "timeout_command": 1200,
     "timeout_llm": 120,
     "timeout_format": 10,
@@ -143,6 +154,8 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `model` | `meta/llama-3.1-70b-instruct` | Default LLM model |
+| `api_base_url` | NVIDIA NIM endpoint | Switch to Ollama/vLLM by changing this |
 | `timeout_command` | 1200 | Max seconds for bash commands (0 = infinite) |
 | `timeout_llm` | 120 | Max seconds for LLM API calls (0 = infinite) |
 | `timeout_format` | 10 | Max seconds for formatters like black/prettier |
@@ -154,6 +167,28 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 | `retry_base_delay` | 2.0 | Base delay for exponential backoff (seconds) |
 | `retry_max_delay` | 60.0 | Max delay cap for backoff (seconds) |
 | `allow_bash_non_interactive` | false | Allow Bash commands in non-interactive/CI mode |
+
+---
+
+## 📋 Changelog
+
+### v0.4.0 (Latest)
+- 🐛 **System prompt is now OS-aware**: Correctly uses Windows (`mkdir`, `copy`) or Unix (`mkdir -p`, `cp`) commands based on the detected OS
+- 🐛 **Plan quality massively improved**: `/plan` mode now reads your actual documents (SDD, PRD, etc.) and generates concrete plans with real file paths and code — not generic PM templates
+- 🐛 **Fixed `_distill_memory` 400 error**: Context compaction no longer crashes with a Bad Request error
+- 🐛 **Fixed version tracking**: `CURRENT_VERSION` was hardcoded as `3.0.0`; now reads from a single source of truth
+- 🐛 **`/thinkback` shows real data**: Previously showed hardcoded fake table; now shows actual session statistics
+- 🐛 **LiveSync fixed**: `repo_map` module was missing, causing the workspace watcher to silently fail
+- 🔒 **Security**: Non-interactive mode no longer auto-approves Bash commands
+- ⚙️ **Fully configurable**: `max_turns`, `max_tokens`, `max_retries`, retry delays all configurable via settings
+- ⚙️ **Dynamic model list**: Fetched from NIM API at runtime with fallback to known models
+- ⚙️ **Paginated file reading**: `Read` tool supports `offset`/`limit` for large files
+- ✅ **178 tests passing**
+
+### v0.3.4
+- All timeouts configurable via settings (0 = infinite)
+
+---
 
 ## 🛡️ Requirements
 

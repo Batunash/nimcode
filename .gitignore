@@ -28,4 +28,6 @@ htmlcov/
 
 # NimCode specifics (Don't push secrets or session data)
 .nimcode/settings.json
+.nimcode/sessions/
+.nimcode/history/
 NIMCODE.md
