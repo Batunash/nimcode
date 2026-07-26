@@ -1203,6 +1203,49 @@ class NimcodeREPL:
 
                 if not user_input.strip():
                     continue
+
+                # ── Plan-mode file injection ──────────────────────────────────
+                # When in /plan mode, detect any filenames in the user's message,
+                # read them ourselves, and inject their content into the context
+                # BEFORE the LLM sees the prompt. This guarantees the model
+                # plans from real document content instead of generic templates.
+                if getattr(self, "_in_plan_mode", False):
+                    import re as _re
+                    # Match bare filenames/paths with known doc extensions
+                    _file_pattern = _re.compile(
+                        r"[\w./\\-]+\.(?:md|txt|rst|pdf|json|yaml|yml|toml|csv|xml|sdd|prd|rfc|spec)",
+                        _re.IGNORECASE,
+                    )
+                    _mentioned = _file_pattern.findall(user_input)
+                    _injected: list[str] = []
+                    for _fname in _mentioned:
+                        _fpath = os.path.join(os.getcwd(), _fname)
+                        if os.path.isfile(_fpath):
+                            try:
+                                with open(_fpath, "r", encoding="utf-8", errors="replace") as _fh:
+                                    _content = _fh.read()
+                                # Truncate very large files to ~40k chars to stay within context
+                                _MAX = 40_000
+                                _truncated = ""
+                                if len(_content) > _MAX:
+                                    _content = _content[:_MAX]
+                                    _truncated = f"\n[... file truncated at {_MAX} chars. Pass offset/limit to the Read tool for more.]"
+                                self.agent.messages.append({
+                                    "role": "user",
+                                    "content": (
+                                        f"[AUTO-READ] Here is the full content of '{_fname}' "
+                                        f"that the user mentioned:\n\n"
+                                        f"```\n{_content}{_truncated}\n```\n\n"
+                                        f"Use this content as the ground truth for your plan. "
+                                        f"Do NOT invent requirements not present in this document."
+                                    ),
+                                })
+                                _injected.append(_fname)
+                                console.print(f"[dim]📎 Auto-injected: {_fname} ({len(_content):,} chars)[/dim]")
+                            except Exception as _e:
+                                console.print(f"[dim yellow]⚠ Could not auto-read {_fname}: {_e}[/dim yellow]")
+                # ─────────────────────────────────────────────────────────────
+
                 await self.agent.run(user_input)
                 
                 if getattr(self, 'is_autofix', False):
