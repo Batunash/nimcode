@@ -150,6 +150,17 @@ class Agent:
                 final_prompt += "\n\nCRITICAL USER SKILLS & GUIDELINES:\n" + "\n".join(loaded_skills)
                 logger.info(f"Loaded {len(loaded_skills)} custom skills from {skills_dir}")
                 
+        # Active Plan Context
+        active_plan_path = os.path.join(cwd, ".nimcode", "active_plan.txt")
+        if os.path.exists(active_plan_path):
+            try:
+                with open(active_plan_path, "r", encoding="utf-8") as f:
+                    plan_file = f.read().strip()
+                if plan_file:
+                    final_prompt += f"\n\nCURRENT ACTIVE PLAN:\nThe user has set '{plan_file}' as the active implementation plan. You MUST read this plan from the file system and follow its step-by-step instructions for your current coding tasks."
+            except Exception as e:
+                logger.warning(f"Failed to read active plan: {e}")
+                
         # Git context
         if os.path.exists(".git"):
             import subprocess

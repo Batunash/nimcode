@@ -60,8 +60,10 @@ class MemoryManager:
 
     @staticmethod
     def log_to_nimcode_md(turn: int, prompt: str, response: str, cwd: str = ".") -> None:
-        """Appends the interaction to NIMCODE.md for persistent session history."""
-        file_path = os.path.join(cwd, "NIMCODE.md")
+        """Appends the interaction to .nimcode/NIMCODE.md for persistent session history."""
+        nimcode_dir = os.path.join(cwd, ".nimcode")
+        os.makedirs(nimcode_dir, exist_ok=True)
+        file_path = os.path.join(nimcode_dir, "NIMCODE.md")
         with open(file_path, "a", encoding="utf-8") as f:
             f.write(f"## Turn {turn}\n\n")
             f.write(f"**User**: {prompt}\n\n")

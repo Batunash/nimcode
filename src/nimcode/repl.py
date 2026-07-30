@@ -443,14 +443,16 @@ class NimcodeREPL:
                         "2. BASE your plan on the ACTUAL content of those documents/files. Quote real names, real modules, "
                         "real requirements found during exploration. Do NOT invent a generic project.\n"
                         "3. Write the plan to a file inside '.nimcode/plans/'. CHOOSE a descriptive name derived from the task "
-                        "or document (e.g. 'imagease_pro_implementation_plan.md'), NOT 'feature_x_plan.md'.\n"
+                        "or document AND append a timestamp to prevent naming collisions (e.g. 'imagease_pro_plan_20260730_1430.md').\n"
                         "4. The plan must reference real files, real code, and real requirements found during exploration. "
                         "Include specific files to create/modify (with full paths), actual code snippets or pseudocode for each "
                         "change, dependencies to install, testing strategy, and step-by-step execution order.\n"
                         "5. NEVER output a generic software-lifecycle template (Phase1: Research / Design / Development / "
                         "Testing / Deployment) unless that is literally what the documents describe. NEVER use placeholders "
                         "like [Insert Date].\n"
-                        "6. A good plan is one that another developer could follow to implement the feature without asking questions."
+                        "6. A good plan is one that another developer could follow to implement the feature without asking questions.\n"
+                        "7. After writing the plan, you MUST overwrite the file '.nimcode/active_plan.txt' to contain exactly the path "
+                        "of the plan you just created. This ensures the system tracks the current active plan."
                     )})
                     continue
                 elif user_input.strip().startswith("/teleport"):

@@ -11,10 +11,10 @@ def test_version_format():
         assert part.isdigit(), f"Version part '{part}' is not a digit"
 
 
-def test_version_is_0_4_3():
-    """Current version should be 0.4.3."""
+def test_version_is_0_4_4():
+    """Current version should be 0.4.4."""
     from nimcode.__version__ import __version__
-    assert __version__ == "0.4.3"
+    assert __version__ == "0.4.4"
 
 
 def test_updater_uses_version():
