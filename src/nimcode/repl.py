@@ -450,6 +450,8 @@ class NimcodeREPL:
                         "   - Step C: Repeat Step B for Phase 2, Phase 3, etc., updating the same single file until all phases are fully detailed in Project Manager style.\n"
                         "   - Step D: After all phases are detailed, overwrite '.nimcode/active_plan.txt' with the master plan's path.\n"
                         "4. General Rules:\n"
+                        "   - STRICT FIDELITY: You MUST absolutely respect the languages, frameworks, endpoints, tables, and features mentioned in the user's project files or SDD. Do NOT default to Python/Pytest if another language is specified. Do NOT omit database tables. Do NOT generalize specific endpoints into 'REST API'.\n"
+                        "   - BUSINESS LOGIC: Do not ignore 'non-technical' sections like Monetization, ASO, or Affiliate integrations. They MUST be included as explicit tasks.\n"
                         "   - Quote real names, modules, and requirements. Do not invent generic projects.\n"
                         "   - NEVER output a generic software-lifecycle template (Phase1: MVP / Design / Development) unless instructed. Focus on code, DB schemas, and technical choices.\n"
                         "   - After writing any plan file, overwrite '.nimcode/active_plan.txt' with the file's path."
