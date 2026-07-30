@@ -80,13 +80,11 @@ async def test_plan_message_does_not_hardcode_feature_x(agent):
     plan_msgs = [m for m in agent.messages if "PLANNING MODE" in m.get("content", "")]
     assert plan_msgs, "/plan did not append a planning system message"
     content = plan_msgs[-1]["content"]
-    # The fix PRESCRIBES a document-derived example name...
-    assert "imagease_pro_implementation_plan" in content or "derived from the task" in content
-    # ...and only mentions feature_x_plan as an explicit anti-example, never as the one to follow.
-    if "feature_x_plan" in content:
-        assert "NOT 'feature_x_plan.md'" in content or "not 'feature_x_plan" in content
-    # The fixed message must instruct grounding in real document content.
-    assert "ACTUAL content" in content or "BASE your plan" in content
+    # The prompt now dynamically differentiates between Bug Fix and From-Scratch tasks
+    assert "Identify the task type" in content or "Bug Fix / Minor Feature" in content
+    assert "<name_timestamp>.md" in content
+    # It must enforce iterativity for major tasks
+    assert "ITERATIVE process" in content
 
 
 @pytest.mark.asyncio
