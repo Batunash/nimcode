@@ -82,9 +82,8 @@ async def test_plan_message_does_not_hardcode_feature_x(agent):
     content = plan_msgs[-1]["content"]
     # The prompt now dynamically differentiates between Bug Fix and From-Scratch tasks
     assert "Identify the task type" in content or "Bug Fix / Minor Feature" in content
-    assert "<name_timestamp>.md" in content
-    # It must enforce autonomous multi-file generation for major tasks
-    assert "AUTONOMOUSLY" in content or "SEPARATE" in content
+    # It must enforce autonomous single-file generation with tasks/criteria
+    assert "SINGLE, EXTREMELY DETAILED" in content or "Acceptance Criteria" in content
 
 
 @pytest.mark.asyncio
