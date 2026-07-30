@@ -327,7 +327,7 @@ class Agent:
         return "Subagent reached max turns before completing."
 
     async def _distill_memory(self) -> list:
-        system_msg = self.messages[0]
+        system_msg = dict(self.messages[0])
         recent_msgs = self.messages[-4:] if len(self.messages) > 4 else self.messages[1:]
         old_msgs = self.messages[1:-4] if len(self.messages) > 4 else []
         
@@ -335,16 +335,23 @@ class Agent:
             return self.messages
             
         summary_prompt = "You are a summarization AI. Please summarize the following conversation concisely. Focus on the final state, any completed goals, and any context needed for the next steps:\n\n"
+        
+        existing_summary_marker = "\n\n[PREVIOUS MEMORY SUMMARY]\n"
+        if existing_summary_marker in system_msg["content"]:
+            parts = system_msg["content"].split(existing_summary_marker, 1)
+            system_msg["content"] = parts[0]
+            summary_prompt += f"Previous summary to include:\n{parts[1]}\n\n"
+            
         for m in old_msgs:
             summary_prompt += f"{m['role'].upper()}: {str(m['content'])[:500]}...\n"
             
         try:
             summary = await self.client.chat_one_shot(summary_prompt)
-            system_msg["content"] += f"\n\n[PREVIOUS MEMORY SUMMARY]\n{summary}"
+            system_msg["content"] += f"{existing_summary_marker}{summary}"
+            return [system_msg] + recent_msgs
         except Exception as e:
             logger.error(f"Distillation failed: {e}")
-            
-        return [system_msg] + recent_msgs
+            return self.messages
 
     async def run(self, initial_prompt: str = None) -> None:
         """Main execution loop for NimCode agent."""

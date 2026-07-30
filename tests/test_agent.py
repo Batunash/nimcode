@@ -99,8 +99,8 @@ async def test_distill_memory(agent):
     agent.client.chat_one_shot = AsyncMock(return_value="Summarized history")
     
     new_msgs = await agent._distill_memory()
-    assert "[PREVIOUS MEMORY SUMMARY]" in agent.messages[0]["content"]
-    assert "Summarized history" in agent.messages[0]["content"]
+    assert "[PREVIOUS MEMORY SUMMARY]" in new_msgs[0]["content"]
+    assert "Summarized history" in new_msgs[0]["content"]
     assert len(new_msgs) == 5
 
 @pytest.mark.asyncio
