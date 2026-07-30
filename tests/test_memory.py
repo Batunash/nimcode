@@ -70,7 +70,7 @@ def test_compact_context_empty():
 def test_log_to_nimcode_md(tmp_path):
     cwd = str(tmp_path)
     MemoryManager.log_to_nimcode_md(1, "hello", "world", cwd)
-    file_path = os.path.join(cwd, "NIMCODE.md")
+    file_path = os.path.join(cwd, ".nimcode", "NIMCODE.md")
     assert os.path.exists(file_path)
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
