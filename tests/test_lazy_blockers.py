@@ -46,3 +46,36 @@ def test_ast_blocker_allows_valid_code():
         assert True
     except Exception:
         pytest.fail("_check_lazy_code raised an exception on valid code")
+
+def test_ast_deletion_blocker():
+    old_content = '''
+def func1(): pass
+def func2(): pass
+def func3(): pass
+    '''
+    new_content = '''
+def func1(): pass
+    '''
+    # We deleted 2 functions out of 3, this should trigger the AST deletion blocker
+    try:
+        ToolRegistry._check_ast_deletion(old_content, new_content, "dummy.py")
+        pytest.fail("Failed to block massive code deletion")
+    except Exception as e:
+        assert "Validation Error: Massive code deletion detected" in str(e)
+
+def test_strict_markdown_validator():
+    # Too short
+    out = ToolRegistry.execute({"tool": "TaskCreate", "args": {"task_id": "1", "subject": "S", "description": "Short"}}, cwd=".")
+    assert "Validation Error: Task description is too short" in out
+    
+    # Missing sections
+    long_desc = "x" * 200
+    out = ToolRegistry.execute({"tool": "TaskCreate", "args": {"task_id": "1", "subject": "S", "description": long_desc}}, cwd=".")
+    assert "missing required markdown sections" in out
+    
+    # Valid
+    valid_desc = "x" * 150 + "Target Files\nImplementation Details\nChecklist"
+    # Execute will try to create the task, which might succeed or say already exists, but won't raise ToolError
+    out = ToolRegistry.execute({"tool": "TaskCreate", "args": {"task_id": "test_valid", "subject": "S", "description": valid_desc}}, cwd=".")
+    assert "Validation Error" not in out
+

@@ -272,6 +272,29 @@ class ToolRegistry:
 
 
     @staticmethod
+    def _check_ast_deletion(old_content: str, new_content: str, file_path: str):
+        if not file_path.endswith('.py'):
+            return
+            
+        import ast
+        try:
+            old_tree = ast.parse(old_content)
+            new_tree = ast.parse(new_content)
+            
+            def count_nodes(tree):
+                return sum(1 for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+                
+            old_count = count_nodes(old_tree)
+            new_count = count_nodes(new_tree)
+            
+            if old_count > 0 and new_count < old_count:
+                # If we lost more than 30% of the functions/classes or lost at least 2
+                if (old_count - new_count) / old_count > 0.3 or (old_count - new_count) >= 2:
+                    raise ToolError(f"Validation Error: Massive code deletion detected. AST dropped from {old_count} to {new_count} functions/classes. This usually indicates Context Amnesia (truncation). Fix your code.")
+        except SyntaxError:
+            pass
+
+    @staticmethod
     def _check_lazy_code(content: str, file_path: str):
         lazy_patterns = ["// TODO", "# TODO", "// FIXME", "# FIXME", "Insert code here", "pass\n"]
         for p in lazy_patterns:
@@ -290,6 +313,14 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_task_create(task_id: str, subject: str, description: str) -> str:
+        if len(description) < 150:
+            raise ToolError("Validation Error: Task description is too short (under 150 characters). You must provide extremely detailed technical specs.")
+        
+        required_sections = ["Target Files", "Implementation Details", "Checklist"]
+        missing = [sec for sec in required_sections if sec not in description]
+        if missing:
+            raise ToolError(f"Validation Error: Task description is missing required markdown sections: {missing}. Follow the Strict Plan Format.")
+            
         from .task_manager import TaskManager
         tm = TaskManager()
         return tm.create_task(task_id, subject, description)
@@ -686,6 +717,7 @@ class ToolRegistry:
         new_content_lines = lines[:start_line-1] + new_lines_to_insert + lines[end_line:]
         new_content = "".join(new_content_lines)
         
+        ToolRegistry._check_ast_deletion("".join(lines), new_content, file_path)
         import difflib
         diff = "".join(difflib.unified_diff(lines, new_content_lines, fromfile=file_path, tofile=file_path))
         

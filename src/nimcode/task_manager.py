@@ -77,6 +77,14 @@ class TaskManager:
         if status not in valid_statuses:
             return f"Invalid status: {status}. Must be one of {valid_statuses}."
 
+        if status == "in_progress":
+            # Check linearity: all previous tasks must be completed or failed
+            for t_id, t in self.tasks.items():
+                if t_id == task_id:
+                    break
+                if t.status not in ["completed", "failed"]:
+                    return f"Validation Error: Cannot start task {task_id} because previous task {t_id} is still '{t.status}'. You must complete tasks in order."
+
         self.tasks[task_id].status = status
         self.tasks[task_id].updated_at = time.time()
         self._save_tasks()
