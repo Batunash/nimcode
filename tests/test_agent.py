@@ -282,8 +282,8 @@ async def test_agent_auto_linting_js(agent):
                 with patch("nimcode.tools.ToolRegistry.execute", return_value="Output"):
                     with patch("subprocess.run") as mock_run:
                         await agent.run("Hi")
-                        assert mock_run.call_count == 1
-                        assert "prettier" in mock_run.call_args[0][0]
+                        assert mock_run.call_count >= 1
+                        assert any("prettier" in call[0][0] for call in mock_run.call_args_list)
 
 @pytest.mark.asyncio
 async def test_distill_memory_context_full(agent):

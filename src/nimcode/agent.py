@@ -32,7 +32,8 @@ Available Tools:
 - Bash: {{"tool": "Bash", "args": {{"command": "string"}}}}
 - Read: {{"tool": "Read", "args": {{"file_path": "string", "offset": "int (optional, 1-based line number to start from)", "limit": "int (optional, max number of lines to return)"}}}}
 - Write: {{"tool": "Write", "args": {{"file_path": "string", "content": "string"}}}}
-- Edit: {{"tool": "Edit", "args": {{"file_path": "string", "old_string": "string", "new_string": "string"}}}}
+- Replace: {{"tool": "Replace", "args": {{"file_path": "string", "replacements": [{{"old_string": "string", "new_string": "string"}}]}}}}
+- ReplaceBlock: {{"tool": "ReplaceBlock", "args": {{"file_path": "string", "start_line": "int", "end_line": "int", "replacement_content": "string"}}}}
 - Glob: {{"tool": "Glob", "args": {{"pattern": "string"}}}}
 - Grep: {{"tool": "Grep", "args": {{"query": "string", "directory": "string"}}}}
 - AskQuestion: {{"tool": "AskQuestion", "args": {{"question": "string", "options": ["string (optional list of choices)"]}}}} — Ask the USER a clarifying question when requirements are ambiguous. Wait for their reply before continuing. Preferred in /grill-me, /plan, and whenever you lack information.
@@ -77,6 +78,11 @@ When asked to "execute", "implement", or "build" something:
 2. Create actual source files with production-quality code.
 3. Install dependencies, run tests, and verify your work.
 4. If a plan exists in `.nimcode/plans/`, follow it step by step.
+
+ANTI-LAZINESS POLICY (STRICT):
+- You are strictly FORBIDDEN from using placeholders like `// TODO`, `pass`, `$(cat secret.txt)`, `[Insert code here]`.
+- You MUST write complete, full implementations for all functions.
+- If you use placeholders, the system will detect it and reject your turn.
 
 When you have completely fulfilled the user's request and have no more tools to run, output the word TASK_COMPLETE.
 """
@@ -134,6 +140,9 @@ class Agent:
         # Initialize MCP Manager
         self.mcp = MCPManager(self.settings)
         
+        # Stuck-Loop Breaker State
+        self.tool_error_counts = {}
+        
         # Build OS-aware system prompt
         cwd = os.getcwd()
         final_prompt = _build_system_prompt(cwd) + self.mcp.get_system_prompt_additions()
@@ -170,6 +179,31 @@ class Agent:
                 final_prompt += f"\n\nGIT CONTEXT:\nBranch: {branch}\nUncommitted changes:\n{status if status else 'None'}"
             except Exception as e:
                 logger.error(f"Failed to load git context: {e}")
+
+        # Context Injection (Anti-Amnesia RAG)
+        try:
+            # 1. Directory Tree
+            tree_output = ToolRegistry._execute_read_architecture(".", cwd)
+            if len(tree_output) > 2000:
+                tree_output = tree_output[:2000] + "\n... [TRUNCATED]"
+            final_prompt += f"\n\nPROJECT DIRECTORY STRUCTURE:\n{tree_output}"
+            
+            # 2. Schema Injection
+            schema_files = ["schema.sql", "models.py", "prisma/schema.prisma", "db.py"]
+            schema_contents = []
+            for sf in schema_files:
+                sf_path = os.path.join(cwd, sf)
+                if os.path.exists(sf_path):
+                    with open(sf_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        if len(content) > 3000:
+                            content = content[:3000] + "\n... [TRUNCATED]"
+                        schema_contents.append(f"--- {sf} ---\n{content}")
+                        
+            if schema_contents:
+                final_prompt += "\n\nCRITICAL DATABASE SCHEMAS:\n" + "\n".join(schema_contents)
+        except Exception as e:
+            logger.error(f"Failed to inject semantic context: {e}")
 
         self.messages: List[Dict[str, Any]] = [
             {"role": "system", "content": final_prompt}
@@ -378,6 +412,13 @@ class Agent:
             turn += 1
             logger.info(f"--- Turn {turn} ---")
             
+            # Plan-Drift Radar
+            if turn > 0 and turn % 15 == 0:
+                self.messages.append({
+                    "role": "user",
+                    "content": "🧭 PLAN RADAR: You have been running for 15 turns. Please read '.nimcode/active_plan.txt' (if it exists) and verify you are strictly following the current phase. If you have drifted, return to the main objective immediately."
+                })
+            
             # Compact context before calling API
             from rich.console import Console
             if self.memory.count_messages_tokens(self.messages) > self.memory.max_tokens:
@@ -395,6 +436,25 @@ class Agent:
                 break
             
             self.messages.append({"role": "assistant", "content": full_content})
+            
+            # Anti-Laziness Interceptor
+            import re
+            lazy_patterns = [r"//\s*TODO", r"#\s*TODO", r"\$\(cat", r"\[Insert", r"\[Your code", r"pass\s*#"]
+            lazy_detected = False
+            for pat in lazy_patterns:
+                if re.search(pat, full_content, re.IGNORECASE):
+                    lazy_detected = True
+                    break
+                    
+            if lazy_detected:
+                logger.warning("Agent attempted to use placeholder code. Rejecting turn.")
+                from rich.console import Console
+                Console().print("[bold red]🚨 ANTI-LAZINESS SYSTEM TRIGGERED! Agent tried to use placeholders. Forcing retry.[/bold red]")
+                self.messages.append({
+                    "role": "user",
+                    "content": "ERROR: You violated the ANTI-LAZINESS POLICY by using placeholders, TODOs, or mock strings. You must write the REAL, COMPLETE logic. Re-do this action properly."
+                })
+                continue
             
             # Log turn to NIMCODE.md
             try:
@@ -450,7 +510,7 @@ class Agent:
                             result = ToolRegistry.execute(tool_call)
                             
                         # Auto-Linting & Diff Printing
-                        if tool_name in ["Write", "Edit"] and "Error" not in result:
+                        if tool_name in ["Write", "Edit", "Replace", "ReplaceBlock"] and "Error" not in result:
                             if "Diff:\n" in result:
                                 parts = result.split("Diff:\n", 1)
                                 diff_text = parts[1]
@@ -485,6 +545,22 @@ class Agent:
                                     t_fmt = self.settings.get("timeout_format", 10)
                                     t_fmt = None if t_fmt == 0 else t_fmt
                                     subprocess.run(["npx", "--yes", "prettier", "--write", file_path], capture_output=True, timeout=t_fmt)
+                                    # Basic syntax check for JS
+                                    if file_path.endswith(".js"):
+                                        lint = subprocess.run(["node", "--check", file_path], capture_output=True, text=True, timeout=t_fmt)
+                                        if lint.returncode != 0:
+                                            result += f"\n\nAuto-Linter found errors:\n{lint.stderr}\nPlease fix them."
+                                except Exception:
+                                    pass
+                            elif file_path.endswith(".go"):
+                                import subprocess
+                                try:
+                                    t_fmt = self.settings.get("timeout_format", 10)
+                                    t_fmt = None if t_fmt == 0 else t_fmt
+                                    subprocess.run(["go", "fmt", file_path], capture_output=True, timeout=t_fmt)
+                                    lint = subprocess.run(["go", "vet", file_path], capture_output=True, text=True, timeout=t_fmt)
+                                    if lint.returncode != 0:
+                                        result += f"\n\nAuto-Linter found errors:\n{lint.stderr}\nPlease fix them."
                                 except Exception:
                                     pass
                 except KeyboardInterrupt:
@@ -530,13 +606,33 @@ class Agent:
                     from rich.panel import Panel
                     c.print(Panel(preview, title=f"Output: {tool_name}", border_style="dim", padding=(0, 1)))
 
-                # We simulate tool messages by adding a user message with the tool result.
-                # In native mode this would be a "tool" role message, but for fallback mode, 
-                # passing it as a user message makes it explicit.
-                self.messages.append({
-                    "role": "user", 
-                    "content": f"Tool {tool_name} returned:\n{result}"
-                })
+                # Stuck-Loop Breaker
+                is_error = False
+                if isinstance(result, str) and ("Error" in result or "Auto-Linter found errors:" in result or "Traceback" in result):
+                    is_error = True
+                    
+                if is_error:
+                    error_hash = hash(tool_name + str(result)[:200])
+                    self.tool_error_counts[error_hash] = self.tool_error_counts.get(error_hash, 0) + 1
+                    
+                    if self.tool_error_counts[error_hash] >= 3:
+                        from rich.console import Console
+                        Console().print("[bold red]🚨 STUCK-LOOP BREAKER TRIGGERED! Forcing agent to change strategy.[/bold red]")
+                        self.messages.append({
+                            "role": "user", 
+                            "content": f"Tool {tool_name} returned:\n{result}\n\n🚨 SYSTEM OVERRIDE: You have triggered this exact error 3 times in a row! DO NOT repeat the same action. Use GetCodeOutline, Read, or grep to understand what is wrong, or ask the user for help."
+                        })
+                        self.tool_error_counts[error_hash] = 0
+                    else:
+                        self.messages.append({
+                            "role": "user", 
+                            "content": f"Tool {tool_name} returned:\n{result}"
+                        })
+                else:
+                    self.messages.append({
+                        "role": "user", 
+                        "content": f"Tool {tool_name} returned:\n{result}"
+                    })
 
             except Exception as e:
                 logger.error(f"Error parsing/executing tool: {e}")

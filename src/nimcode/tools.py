@@ -56,6 +56,16 @@ class ToolRegistry:
                 },
                 "required": ["file_path", "replacements"]
             },
+            "ReplaceBlock": {
+                "description": "Edit an existing file by replacing a block of lines. Solves whitespace and indentation issues by targeting exact line numbers.",
+                "parameters": {
+                    "file_path": {"type": "string", "description": "Path to the file."},
+                    "start_line": {"type": "integer", "description": "The 1-based starting line number of the block to replace."},
+                    "end_line": {"type": "integer", "description": "The 1-based ending line number of the block to replace (inclusive)."},
+                    "replacement_content": {"type": "string", "description": "The content to insert in place of the specified lines."}
+                },
+                "required": ["file_path", "start_line", "end_line", "replacement_content"]
+            },
             "StartTerminal": {
                 "description": "Start a persistent interactive terminal session. Useful for running long-lived commands or commands that prompt for user input (y/n).",
                 "parameters": {
@@ -133,6 +143,20 @@ class ToolRegistry:
                     }
                 },
                 "required": ["question"]
+            },
+            "GetCodeOutline": {
+                "description": "Get the structural outline (functions, classes) of a code file with line numbers. Use this to quickly navigate large files.",
+                "parameters": {
+                    "file_path": {"type": "string", "description": "Path to the code file."}
+                },
+                "required": ["file_path"]
+            },
+            "TestRunner": {
+                "description": "Run a test suite and capture the output to verify code correctness.",
+                "parameters": {
+                    "command": {"type": "string", "description": "The test command (e.g., 'pytest', 'npm test', 'go test')"}
+                },
+                "required": ["command"]
             }
         }
         return schemas.get(tool_name)
@@ -176,6 +200,8 @@ class ToolRegistry:
                 return cls._execute_write(args["file_path"], args["content"], cwd)
             elif tool_name == "Replace":
                 return cls._execute_replace(args["file_path"], args["replacements"], cwd)
+            elif tool_name == "ReplaceBlock":
+                return cls._execute_replace_block(args["file_path"], args["start_line"], args["end_line"], args["replacement_content"], cwd)
             elif tool_name == "StartTerminal":
                 return cls._execute_start_terminal(args["command"], args["term_id"], cwd)
             elif tool_name == "TerminalInput":
@@ -196,6 +222,10 @@ class ToolRegistry:
                 return cls._execute_read_active_editor(cwd)
             elif tool_name == "AskQuestion":
                 return cls._execute_ask_question(args["question"], args.get("options", []))
+            elif tool_name == "GetCodeOutline":
+                return cls._execute_get_code_outline(args["file_path"], cwd)
+            elif tool_name == "TestRunner":
+                return cls._execute_test_runner(args["command"], cwd)
             else:
                 raise ToolError(f"Tool {tool_name} is registered but execution is not implemented.")
         except Exception as e:
@@ -496,6 +526,46 @@ class ToolRegistry:
             f.write(new_content)
             
         return f"Successfully applied {applied} replacements in {file_path}.\nDiff:\n{diff}"
+
+    @staticmethod
+    def _execute_replace_block(file_path: str, start_line: int, end_line: int, replacement_content: str, cwd: str) -> str:
+        full_path = os.path.join(cwd, file_path)
+        if not os.path.exists(full_path):
+            raise ToolError(f"File not found: {file_path}")
+            
+        with open(full_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            
+        total_lines = len(lines)
+        if start_line < 1 or start_line > total_lines:
+            raise ToolError(f"start_line {start_line} is out of bounds (1-{total_lines}).")
+        if end_line < start_line or end_line > total_lines:
+            raise ToolError(f"end_line {end_line} is out of bounds or less than start_line.")
+            
+        # Run Secret Scanner
+        try:
+            from .secret_scanner import SecretScanner
+            findings = SecretScanner.scan(replacement_content)
+            if findings:
+                raise ToolError(f"SecretScanner blocked replace: {len(findings)} secrets detected ({', '.join(findings)})")
+        except ImportError:
+            pass
+            
+        new_lines_to_insert = replacement_content.splitlines(keepends=True)
+        if new_lines_to_insert and not new_lines_to_insert[-1].endswith('\n'):
+            new_lines_to_insert[-1] += '\n'
+            
+        new_content_lines = lines[:start_line-1] + new_lines_to_insert + lines[end_line:]
+        new_content = "".join(new_content_lines)
+        
+        import difflib
+        diff = "".join(difflib.unified_diff(lines, new_content_lines, fromfile=file_path, tofile=file_path))
+        
+        ToolRegistry._backup_file(full_path, cwd)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+            
+        return f"Successfully replaced lines {start_line}-{end_line} in {file_path}.\nDiff:\n{diff}"
 
     @staticmethod
     def _execute_glob(pattern: str, cwd: str) -> str:
@@ -802,3 +872,44 @@ class ToolRegistry:
                     pass
                     
         return "Timed out waiting for VS Code extension. Make sure NimCode is running inside VS Code."
+
+    @classmethod
+    def _execute_get_code_outline(cls, file_path: str, cwd: str) -> str:
+        """Extracts class/function signatures with line numbers."""
+        import os, re
+        full_path = os.path.join(cwd, file_path)
+        if not os.path.exists(full_path):
+            return f"Error: File {file_path} not found."
+            
+        try:
+            with open(full_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                
+            outline = []
+            pattern = re.compile(r"^\s*(def |class |function |const \w+\s*=\s*\(|type |func |struct |interface )")
+            for i, line in enumerate(lines):
+                if pattern.search(line):
+                    outline.append(f"Line {i+1}: {line.strip()}")
+                    
+            if not outline:
+                return f"No major structural blocks (functions/classes) found in {file_path} using generic regex."
+            return "\n".join(outline)
+        except Exception as e:
+            return f"Error reading {file_path}: {e}"
+
+    @classmethod
+    def _execute_test_runner(cls, command: str, cwd: str) -> str:
+        """Runs test commands safely and captures output."""
+        import subprocess
+        try:
+            result = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True, timeout=60)
+            output = f"Command: {command}\nExit Code: {result.returncode}\n"
+            if result.stdout:
+                output += f"\nSTDOUT:\n{result.stdout}"
+            if result.stderr:
+                output += f"\nSTDERR:\n{result.stderr}"
+            return output
+        except subprocess.TimeoutExpired:
+            return f"Error: Test command '{command}' timed out after 60 seconds."
+        except Exception as e:
+            return f"Error running tests: {e}"
