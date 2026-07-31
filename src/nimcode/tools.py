@@ -151,6 +151,35 @@ class ToolRegistry:
                 },
                 "required": ["file_path"]
             },
+                        "TaskCreate": {
+                "description": "Create a new task in the task list.",
+                "parameters": {
+                    "task_id": {"type": "string", "description": "Unique ID for the task (e.g. '1.1')"},
+                    "subject": {"type": "string", "description": "Short title of the task."},
+                    "description": {"type": "string", "description": "Detailed description."}
+                },
+                "required": ["task_id", "subject", "description"]
+            },
+            "TaskUpdate": {
+                "description": "Update the status of an existing task.",
+                "parameters": {
+                    "task_id": {"type": "string", "description": "ID of the task."},
+                    "status": {"type": "string", "description": "One of: pending, in_progress, completed, failed."}
+                },
+                "required": ["task_id", "status"]
+            },
+            "TaskList": {
+                "description": "List all current tasks and their statuses.",
+                "parameters": {},
+                "required": []
+            },
+            "InvokeQA": {
+                "description": "Invoke the QA Verification Agent to test your code. MUST run before finishing.",
+                "parameters": {
+                    "instructions": {"type": "string", "description": "What should the QA agent verify?"}
+                },
+                "required": ["instructions"]
+            },
             "TestRunner": {
                 "description": "Run a test suite and capture the output to verify code correctness.",
                 "parameters": {
@@ -224,6 +253,14 @@ class ToolRegistry:
                 return cls._execute_ask_question(args["question"], args.get("options", []))
             elif tool_name == "GetCodeOutline":
                 return cls._execute_get_code_outline(args["file_path"], cwd)
+            elif tool_name == "TaskCreate":
+                return cls._execute_task_create(args["task_id"], args["subject"], args["description"])
+            elif tool_name == "TaskUpdate":
+                return cls._execute_task_update(args["task_id"], args["status"])
+            elif tool_name == "TaskList":
+                return cls._execute_task_list()
+            elif tool_name == "InvokeQA":
+                return cls._execute_invoke_qa(args["instructions"], cwd)
             elif tool_name == "TestRunner":
                 return cls._execute_test_runner(args["command"], cwd)
             else:
@@ -232,6 +269,48 @@ class ToolRegistry:
             if isinstance(e, ToolError):
                 return f"ToolError: {str(e)}"
             return f"Error executing {tool_name}: {str(e)}"
+
+
+    @staticmethod
+    def _check_lazy_code(content: str, file_path: str):
+        lazy_patterns = ["// TODO", "# TODO", "// FIXME", "# FIXME", "Insert code here", "pass\n"]
+        for p in lazy_patterns:
+            if p in content:
+                raise ToolError(f"Validation Error: Lazy code detected ('{p}'). You must provide the full implementation.")
+        if file_path.endswith('.py'):
+            import ast
+            try:
+                tree = ast.parse(content)
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                        if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
+                            raise ToolError("Validation Error: Lazy code detected (empty function/class with 'pass'). You must provide the full implementation.")
+            except SyntaxError:
+                pass
+
+    @staticmethod
+    def _execute_task_create(task_id: str, subject: str, description: str) -> str:
+        from .task_manager import TaskManager
+        tm = TaskManager()
+        return tm.create_task(task_id, subject, description)
+
+    @staticmethod
+    def _execute_task_update(task_id: str, status: str) -> str:
+        from .task_manager import TaskManager
+        tm = TaskManager()
+        return tm.update_task_status(task_id, status)
+
+    @staticmethod
+    def _execute_task_list() -> str:
+        from .task_manager import TaskManager
+        tm = TaskManager()
+        return tm.list_tasks()
+
+    @staticmethod
+    def _execute_invoke_qa(instructions: str, cwd: str) -> str:
+        from .agents.qa_agent import QAAgent
+        qa = QAAgent(cwd=cwd)
+        return qa.run(instructions)
 
     _BACKGROUND_TASKS = {}
     
@@ -405,7 +484,16 @@ class ToolRegistry:
         except ValueError:
             return "Error executing Read: 'offset' and 'limit' must be integers."
 
+        
         full_path = os.path.join(cwd, file_path)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    if len(f.readlines()) > 100:
+                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+            except:
+                pass
+
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
         if os.path.isdir(full_path):
@@ -452,6 +540,10 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_write(file_path: str, content: str, cwd: str) -> str:
+
+        # Physical Blocker for Lazy Code
+        ToolRegistry._check_lazy_code(content, file_path)
+
         # Run Secret Scanner
         try:
             from .secret_scanner import SecretScanner
@@ -461,7 +553,16 @@ class ToolRegistry:
         except ImportError:
             pass
             
+        
         full_path = os.path.join(cwd, file_path)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    if len(f.readlines()) > 100:
+                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+            except:
+                pass
+
         os.makedirs(os.path.dirname(os.path.abspath(full_path)) or ".", exist_ok=True)
         
         import difflib
@@ -485,7 +586,16 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_replace(file_path: str, replacements: list, cwd: str) -> str:
+        
         full_path = os.path.join(cwd, file_path)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    if len(f.readlines()) > 100:
+                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+            except:
+                pass
+
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
             
@@ -534,7 +644,20 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_replace_block(file_path: str, start_line: int, end_line: int, replacement_content: str, cwd: str) -> str:
+
+        # Physical Blocker for Lazy Code
+        ToolRegistry._check_lazy_code(replacement_content, file_path)
+
+        
         full_path = os.path.join(cwd, file_path)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    if len(f.readlines()) > 100:
+                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+            except:
+                pass
+
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
             
@@ -882,7 +1005,16 @@ class ToolRegistry:
     def _execute_get_code_outline(cls, file_path: str, cwd: str) -> str:
         """Extracts class/function signatures with line numbers."""
         import os, re
+        
         full_path = os.path.join(cwd, file_path)
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    if len(f.readlines()) > 100:
+                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+            except:
+                pass
+
         if not os.path.exists(full_path):
             return f"Error: File {file_path} not found."
             
