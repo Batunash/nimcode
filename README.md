@@ -172,7 +172,10 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.5.2 (Latest)
+### v0.5.3 (Latest)
+- 🧭 **Phase/Task Plan Architecture**: `/plan` mode now forces the AI to output plans with meticulous Phase -> Task -> Checklist hierarchy (inspired by Claude Code), fixing superficial plan generation.
+
+### v0.5.2
 - 🧠 **Autonomous Marathon Runner**: Capable of running non-stop for 5-6 hours without drifting from the main plan.
 - 🧪 **Native TestRunner**: NimCode can now run your test suites (`pytest`, `npm test`, `go test`) and self-heal its code until the tests pass.
 - 🗺️ **Semantic AST Explorer**: `GetCodeOutline` tool added for instant navigation within large files (functions/classes with line numbers) instead of reading thousands of lines.

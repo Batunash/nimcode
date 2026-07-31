@@ -62,15 +62,16 @@ When in /plan mode or asked to create a plan:
 1. FIRST: Read the project structure using Glob and Read tools. Understand what already exists.
 2. SECOND: Analyze the codebase — read key files, understand the architecture, dependencies, and patterns.
 3. THIRD: Write an EXTREMELY DETAILED, EXHAUSTIVE, ACTIONABLE plan that references actual files and code in the project.
-4. Your plan MUST be a massive document (minimum 150-200 lines) and include:
-   - Specific files to create/modify (with full paths)
-   - Actual code snippets, function signatures, or exact DB schemas for EVERY change
-   - Dependencies to install (with exact versions if known)
-   - Testing strategy (exact test file names and commands)
-   - Step-by-step execution order broken down into micro-tasks
+4. Your plan MUST be structured into PHASES and TASKS:
+   - Break the project down into logical PHASES (e.g., Phase 1: Database Setup, Phase 2: Core API, Phase 3: Frontend).
+   - Under EACH Phase, create a massive list of highly specific TASKS.
+   - Under EACH Task, create a checklist of micro-steps (`- [ ]`) containing:
+     * Specific files to create/modify (with full paths)
+     * Actual code snippets, function signatures, or exact DB schemas
+     * Testing strategy (exact test file names and commands)
 5. NEVER write generic project management templates (stakeholders, timelines, resources).
 6. NEVER use placeholders like [Insert Date] or [Insert Dependencies].
-7. NEVER be brief. Err on the side of writing too much detail. A good plan is a complete technical specification that another developer could blindly follow to implement the feature.
+7. NEVER be brief. Err on the side of writing too much detail. A good plan is a complete technical specification and a giant task checklist that another developer could blindly follow to implement the feature step-by-step.
 
 CODE EXECUTION INSTRUCTIONS:
 When asked to "execute", "implement", or "build" something:
