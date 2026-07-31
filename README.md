@@ -172,7 +172,10 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.5.4 (Latest)
+### v0.5.5 (Latest)
+- 🐛 **UI Bug Fix**: Fixed a visual bug where the CLI welcome banner hardcoded `NimCode v0.2.0` despite the user having updated to a newer version.
+
+### v0.5.4
 - 🐛 **Bug Fix**: Fixed a bug where the `Read` tool would crash with a `TypeError` if an LLM provided the `offset` and `limit` arguments as strings (e.g. `'1'`) instead of integers.
 
 ### v0.5.3
