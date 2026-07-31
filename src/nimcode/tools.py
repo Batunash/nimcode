@@ -296,10 +296,17 @@ class ToolRegistry:
 
     @staticmethod
     def _check_lazy_code(content: str, file_path: str):
-        lazy_patterns = ["// TODO", "# TODO", "// FIXME", "# FIXME", "Insert code here", "pass\n"]
-        for p in lazy_patterns:
+        import re
+        # Broad regex for // TO DO, // TODO, # TODO, // FIXME, etc. with flexible spaces
+        if re.search(r'(?i)(?://|#)\s*(?:to\s*do|fix\s*me)', content):
+            raise ToolError("Validation Error: Lazy code detected (TODO/FIXME). You must provide the full implementation.")
+        
+        # Rust/Python stubs
+        stub_patterns = ["todo!()", "unimplemented!()", "Insert code here", "pass\n", "PdfDocument::empty()", "return empty()"]
+        for p in stub_patterns:
             if p in content:
-                raise ToolError(f"Validation Error: Lazy code detected ('{p}'). You must provide the full implementation.")
+                raise ToolError(f"Validation Error: Lazy code stub detected ('{p}'). You must provide the full implementation.")
+                
         if file_path.endswith('.py'):
             import ast
             try:

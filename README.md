@@ -136,7 +136,7 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ```json
 {
-    "model": "meta/llama-3.1-70b-instruct",
+    "model": "meta/llama-3.3-70b-instruct",
     "api_base_url": "https://integrate.api.nvidia.com/v1",
     "timeout_command": 1200,
     "timeout_llm": 120,
@@ -154,7 +154,7 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `model` | `meta/llama-3.1-70b-instruct` | Default LLM model |
+| `model` | `meta/llama-3.3-70b-instruct` | Default LLM model |
 | `api_base_url` | NVIDIA NIM endpoint | Switch to Ollama/vLLM by changing this |
 | `timeout_command` | 1200 | Max seconds for bash commands (0 = infinite) |
 | `timeout_llm` | 120 | Max seconds for LLM API calls (0 = infinite) |

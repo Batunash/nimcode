@@ -8,11 +8,18 @@ class QAAgent:
         self.cwd = cwd
 
     def run(self, instructions: str) -> str:
+        # Check if tasks are completed first (Physical blocker)
+        from ..task_manager import TaskManager
+        tm = TaskManager()
+        incomplete = [t for t in tm.get_all_tasks() if t.get("status") in ("pending", "in_progress")]
+        if incomplete:
+            return f"VERDICT: FAIL\nYou cannot pass QA. There are still {len(incomplete)} unfinished tasks in tasks.json. Go back and complete them."
+            
         # Load API key
         import json
         settings_path = os.path.join(self.cwd, ".nimcode", "settings.json")
         api_key = os.environ.get("NVIDIA_API_KEY")
-        model = "meta/llama-3.1-70b-instruct"
+        model = "meta/llama-3.3-70b-instruct"
         if os.path.exists(settings_path):
             try:
                 with open(settings_path, "r") as f:

@@ -10,7 +10,7 @@ from nimcode.model_registry import (
 
 def test_get_context_window_known_model():
     """Known models should return their specific context window size."""
-    assert get_context_window("meta/llama-3.1-70b-instruct") == 128000
+    assert get_context_window("meta/llama-3.3-70b-instruct") == 128000
     assert get_context_window("nvidia/nemotron-4-340b-instruct") == 4096
     assert get_context_window("mistralai/mixtral-8x22b-instruct-v0.1") == 65536
 

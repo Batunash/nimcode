@@ -184,7 +184,7 @@ class Agent:
     def __init__(self, api_key: str, model: str = None, max_turns: int = None, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = None):
         # Load global settings
         self.settings = load_settings()
-        self.model = model or self.settings.get("model", "meta/llama-3.1-70b-instruct")
+        self.model = model or self.settings.get("model", "meta/llama-3.3-70b-instruct")
         api_base_url = self.settings.get("api_base_url", "https://integrate.api.nvidia.com/v1")
         self.client = NimClient(
             api_key=api_key, 
@@ -524,6 +524,20 @@ class Agent:
                 logger.error(f"Failed to log to NIMCODE.md: {e}")
             
             if "TASK_COMPLETE" in full_content:
+                from .task_manager import TaskManager
+                tm = TaskManager()
+                incomplete = [t for t in tm.get_all_tasks() if t.get("status") in ("pending", "in_progress")]
+                
+                if incomplete:
+                    logger.warning("Agent attempted TASK_COMPLETE but tasks are incomplete.")
+                    from rich.console import Console
+                    Console().print(f"[bold red]🚨 PHYSICAL BLOCK: Agent tried to exit but {len(incomplete)} tasks are still pending/in_progress. Forcing retry.[/bold red]")
+                    self.messages.append({
+                        "role": "user",
+                        "content": f"SYSTEM ERROR: You attempted to use TASK_COMPLETE, but you still have {len(incomplete)} unfinished tasks. You MUST use tools to complete all tasks before finishing. Please continue working."
+                    })
+                    continue
+                    
                 logger.info("Agent finished task.")
                 break
 

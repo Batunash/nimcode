@@ -7,7 +7,7 @@ from nimcode.config import load_settings, save_global_setting
 def test_load_settings_default():
     with patch("os.path.exists", return_value=False):
         settings = load_settings()
-        assert settings["model"] == "meta/llama-3.1-70b-instruct"
+        assert settings["model"] == "meta/llama-3.3-70b-instruct"
         assert settings["mcp_servers"] == {}
         # New configurable settings
         assert settings["max_turns"] == 200
@@ -74,4 +74,4 @@ def test_load_settings_error_handling():
     with patch("os.path.exists", return_value=True):
         with patch("builtins.open", side_effect=Exception("Read error")):
             settings = load_settings()
-            assert settings["model"] == "meta/llama-3.1-70b-instruct"
+            assert settings["model"] == "meta/llama-3.3-70b-instruct"

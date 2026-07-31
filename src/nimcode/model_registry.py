@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 MODEL_CONTEXT_WINDOWS = {
     # Llama 3.1 family
     "meta/llama-3.1-8b-instruct": 128000,
-    "meta/llama-3.1-70b-instruct": 128000,
+    "meta/llama-3.3-70b-instruct": 128000,
     "meta/llama-3.1-405b-instruct": 128000,
     # Llama 3.2 family
     "meta/llama-3.2-1b-instruct": 128000,
@@ -38,7 +38,7 @@ DEFAULT_CONTEXT_WINDOW = 8192
 
 # Hardcoded fallback model list (used when API is unreachable)
 FALLBACK_MODELS = [
-    "meta/llama-3.1-70b-instruct",
+    "meta/llama-3.3-70b-instruct",
     "meta/llama-3.1-8b-instruct",
     "meta/llama-3.1-405b-instruct",
     "meta/llama-3.3-70b-instruct",

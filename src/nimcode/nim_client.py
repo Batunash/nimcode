@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 logger = logging.getLogger(__name__)
 
 class NimClient:
-    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.1-70b-instruct", timeout: float = 120.0, max_retries: int = 15, retry_base_delay: float = 2.0, retry_max_delay: float = 60.0):
+    def __init__(self, api_key: str, base_url: str = "https://integrate.api.nvidia.com/v1", model: str = "meta/llama-3.3-70b-instruct", timeout: float = 120.0, max_retries: int = 15, retry_base_delay: float = 2.0, retry_max_delay: float = 60.0):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
