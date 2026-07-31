@@ -399,6 +399,12 @@ class ToolRegistry:
 
     @staticmethod
     def _execute_read(file_path: str, cwd: str, offset: int = 1, limit: int = 0) -> str:
+        try:
+            offset = max(1, int(offset))
+            limit = max(0, int(limit))
+        except ValueError:
+            return "Error executing Read: 'offset' and 'limit' must be integers."
+
         full_path = os.path.join(cwd, file_path)
         if not os.path.exists(full_path):
             raise ToolError(f"File not found: {file_path}")
@@ -417,7 +423,6 @@ class ToolRegistry:
             all_lines = f.readlines()
 
         total = len(all_lines)
-        offset = max(1, int(offset))
 
         # No limit → whole file (and cache it).
         if limit == 0:

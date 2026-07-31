@@ -172,7 +172,10 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.5.3 (Latest)
+### v0.5.4 (Latest)
+- 🐛 **Bug Fix**: Fixed a bug where the `Read` tool would crash with a `TypeError` if an LLM provided the `offset` and `limit` arguments as strings (e.g. `'1'`) instead of integers.
+
+### v0.5.3
 - 🧭 **Phase/Task Plan Architecture**: `/plan` mode now forces the AI to output plans with meticulous Phase -> Task -> Checklist hierarchy (inspired by Claude Code), fixing superficial plan generation.
 
 ### v0.5.2
