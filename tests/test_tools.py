@@ -41,6 +41,19 @@ def test_execute_read_write(tmp_path):
     res_r = ToolRegistry.execute({"tool": "Read", "args": {"file_path": "test.txt"}}, cwd)
     assert res_r == "Hello World"
 
+def test_execute_append(tmp_path):
+    cwd = str(tmp_path)
+    # Write initial content
+    ToolRegistry.execute({"tool": "Write", "args": {"file_path": "test.txt", "content": "Hello"}}, cwd)
+    
+    # Append content
+    res_a = ToolRegistry.execute({"tool": "Append", "args": {"file_path": "test.txt", "content": " World"}}, cwd)
+    assert "Successfully" in res_a
+    
+    # Read and verify
+    res_r = ToolRegistry.execute({"tool": "Read", "args": {"file_path": "test.txt"}}, cwd)
+    assert res_r == "Hello\n World"
+
 def test_execute_replace_success(tmp_path):
     cwd = str(tmp_path)
     file_path = os.path.join(cwd, "test.txt")

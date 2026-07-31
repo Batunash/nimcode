@@ -4,7 +4,8 @@ from unittest.mock import patch
 from nimcode.agents.qa_agent import QAAgent
 
 @patch("nimcode.nim_client.NimClient.chat")
-def test_qa_agent_verdict_pass(mock_chat):
+@patch("nimcode.task_manager.TaskManager.get_all_tasks", return_value=[])
+def test_qa_agent_verdict_pass(mock_get_tasks, mock_chat):
     # Mocking the async chat function
     async def mock_chat_return(*args, **kwargs):
         return "I have tested the code. VERDICT: PASS"
@@ -18,7 +19,8 @@ def test_qa_agent_verdict_pass(mock_chat):
         assert "QA Agent VERDICT: PASS" in result
 
 @patch("nimcode.nim_client.NimClient.chat")
-def test_qa_agent_verdict_fail(mock_chat):
+@patch("nimcode.task_manager.TaskManager.get_all_tasks", return_value=[])
+def test_qa_agent_verdict_fail(mock_get_tasks, mock_chat):
     async def mock_chat_return(*args, **kwargs):
         return "The test failed. VERDICT: FAIL"
     mock_chat.side_effect = mock_chat_return

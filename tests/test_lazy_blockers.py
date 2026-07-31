@@ -79,3 +79,34 @@ def test_strict_markdown_validator():
     out = ToolRegistry.execute({"tool": "TaskCreate", "args": {"task_id": "test_valid", "subject": "S", "description": valid_desc}}, cwd=".")
     assert "Validation Error" not in out
 
+def test_ast_blocker_rejects_ellipsis():
+    content = "def test():\n    ...\n"
+    try:
+        ToolRegistry._check_lazy_code(content, "dummy.py")
+        pytest.fail("Failed to block Ellipsis")
+    except Exception as e:
+        assert "Lazy code detected" in str(e)
+
+def test_regex_blocker_rejects_rest_of_code():
+    content = "def test():\n    print('test')\n# rest of the code remains unchanged\n"
+    try:
+        ToolRegistry._check_lazy_code(content, "dummy.py")
+        pytest.fail("Failed to block 'rest of the code'")
+    except Exception as e:
+        assert "Lazy code detected" in str(e)
+
+def test_regex_blocker_rejects_ellipsis_comment():
+    content = "def test():\n    print('test')\n# ...\n"
+    try:
+        ToolRegistry._check_lazy_code(content, "dummy.py")
+        pytest.fail("Failed to block '# ...'")
+    except Exception as e:
+        assert "Lazy code detected" in str(e)
+        
+def test_regex_blocker_rejects_logic_goes_here():
+    content = "def test():\n    # logic goes here\n"
+    try:
+        ToolRegistry._check_lazy_code(content, "dummy.py")
+        pytest.fail("Failed to block 'logic goes here'")
+    except Exception as e:
+        assert "Lazy code detected" in str(e)

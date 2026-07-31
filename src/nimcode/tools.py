@@ -37,6 +37,14 @@ class ToolRegistry:
                 },
                 "required": ["file_path", "content"]
             },
+            "Append": {
+                "description": "Append content to the end of an existing file. Ideal for building large plans or documents chunk by chunk without hitting token limits.",
+                "parameters": {
+                    "file_path": {"type": "string", "description": "Path to the file."},
+                    "content": {"type": "string", "description": "Content to append to the file. A newline is automatically added."}
+                },
+                "required": ["file_path", "content"]
+            },
             "Replace": {
                 "description": "Edit an existing file by replacing exact strings. Allows multiple non-contiguous edits in one call.",
                 "parameters": {
@@ -227,6 +235,8 @@ class ToolRegistry:
                 return cls._execute_read(args["file_path"], cwd, args.get("offset", 1), args.get("limit", 0))
             elif tool_name == "Write":
                 return cls._execute_write(args["file_path"], args["content"], cwd)
+            elif tool_name == "Append":
+                return cls._execute_append(args["file_path"], args["content"], cwd)
             elif tool_name == "Replace":
                 return cls._execute_replace(args["file_path"], args["replacements"], cwd)
             elif tool_name == "ReplaceBlock":
@@ -300,21 +310,37 @@ class ToolRegistry:
         # Broad regex for // TO DO, // TODO, # TODO, // FIXME, etc. with flexible spaces
         if re.search(r'(?i)(?://|#)\s*(?:to\s*do|fix\s*me)', content):
             raise ToolError("Validation Error: Lazy code detected (TODO/FIXME). You must provide the full implementation.")
+            
+        # Semantic lazy patterns
+        if re.search(r'(?i)(?:rest of|existing).*?(?:code|file).*?(?:remains|is unchanged|here)', content):
+            raise ToolError("Validation Error: Lazy code detected ('rest of code remains' or similar). Do not skip code.")
+            
+        if re.search(r'(?i)(?:\.\.\.|…)\s*(?:existing|rest of|your)', content):
+            raise ToolError("Validation Error: Lazy code detected ('... existing code' or similar). Do not skip code.")
+            
+        if re.search(r'(?i)(?:logic goes here|implement (?:this|the rest)|your code here|add your logic)', content):
+            raise ToolError("Validation Error: Lazy code detected ('logic goes here' or similar). Do not use placeholders.")
+            
+        if re.search(r'(?i)(?://|#)\s*(?:unchanged|\.\.\.)', content) or re.search(r'(?m)^\s*\.\.\.\s*$', content):
+            raise ToolError("Validation Error: Lazy code detected (ellipsis placeholder '...' or 'unchanged'). You must provide the full implementation.")
         
         # Rust/Python stubs
         stub_patterns = ["todo!()", "unimplemented!()", "Insert code here", "pass\n", "PdfDocument::empty()", "return empty()"]
         for p in stub_patterns:
             if p in content:
-                raise ToolError(f"Validation Error: Lazy code stub detected ('{p}'). You must provide the full implementation.")
+                raise ToolError(f"Validation Error: Lazy code detected ('{p}'). You must provide the full implementation.")
                 
         if file_path.endswith('.py'):
             import ast
             try:
                 tree = ast.parse(content)
                 for node in ast.walk(tree):
-                    if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-                        if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
-                            raise ToolError("Validation Error: Lazy code detected (empty function/class with 'pass'). You must provide the full implementation.")
+                    if isinstance(node, (ast.FunctionDef, ast.ClassDef, ast.AsyncFunctionDef)):
+                        if len(node.body) == 1:
+                            if isinstance(node.body[0], ast.Pass):
+                                raise ToolError("Validation Error: Lazy code detected (empty function/class with 'pass'). You must provide the full implementation.")
+                            elif isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant) and node.body[0].value.value is Ellipsis:
+                                raise ToolError("Validation Error: Lazy code detected (empty function/class with '...'). You must provide the full implementation.")
             except SyntaxError:
                 pass
 
@@ -621,6 +647,31 @@ class ToolRegistry:
             
         diff_str = f"\nDiff:\n{diff}" if diff else ""
         return f"Successfully wrote to {file_path}.{diff_str}"
+
+    @staticmethod
+    def _execute_append(file_path: str, content: str, cwd: str) -> str:
+        # Physical Blocker for Lazy Code
+        ToolRegistry._check_lazy_code(content, file_path)
+
+        # Run Secret Scanner
+        try:
+            from .secret_scanner import SecretScanner
+            findings = SecretScanner.scan(content)
+            if findings:
+                raise ToolError(f"SecretScanner blocked write: {len(findings)} secrets detected ({', '.join(findings)})")
+        except ImportError:
+            pass
+
+        full_path = os.path.join(cwd, file_path)
+        os.makedirs(os.path.dirname(os.path.abspath(full_path)) or ".", exist_ok=True)
+
+        ToolRegistry._backup_file(full_path, cwd)
+        with open(full_path, "a", encoding="utf-8") as f:
+            if not content.startswith("\n"):
+                f.write("\n")
+            f.write(content)
+            
+        return f"Successfully appended to {file_path}."
 
     @staticmethod
     def _execute_replace(file_path: str, replacements: list, cwd: str) -> str:

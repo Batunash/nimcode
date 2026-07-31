@@ -7,7 +7,8 @@ import json
 
 @pytest.fixture
 def agent():
-    return Agent(api_key="test_key", max_turns=3, permission_mode=PermissionMode.BYPASS)
+    with patch("nimcode.task_manager.TaskManager.get_all_tasks", return_value=[]):
+        yield Agent(api_key="test_key", max_turns=3, permission_mode=PermissionMode.BYPASS)
 
 def test_agent_init(agent):
     assert agent.client.api_key == "test_key"

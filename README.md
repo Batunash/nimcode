@@ -172,11 +172,17 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.7.0 (Latest)
+### v0.8.0 (Latest)
+- 📝 **SDD-Style Planning**: `/plan` mode now forces the LLM to output Software Design Document (SDD) style templates with specific dependency graphs, timelines, and rigorous phase tracking (the "Empty Recursive Goblet" approach).
+- 🧱 **Physical Exit Blockers for Tasks**: If the LLM tries to call `TASK_COMPLETE` but still has pending or in_progress tasks in its `.nimcode/tasks.json` file, it will physically intercept the tool call, throw a `SYSTEM ERROR`, and force the LLM to finish the open tasks.
+- 🛡️ **Ultimate Anti-Lazy Shield**: Expanded AST and regex blockers that catch semantic laziness (e.g., `"// rest of the code remains unchanged"`, `"logic goes here"`, or using `...` / Ellipsis in Python). A zero-tolerance policy that forces the LLM to rewrite incomplete code.
+- 🧩 **Chunked Generation (Append Tool)**: A new `Append` tool allows the LLM to write massive documents and code files in chunks over multiple turns without hitting context token limits, directly curing "Lazy Coder Syndrome".
+- 🧪 **205 tests passing**
+
+### v0.7.0
 - 🛡️ **Strict Markdown Validator**: `/plan` mode now physically blocks tasks that are under 150 characters or missing required Markdown headers (`Target Files`, `Implementation Details`, `Checklist`).
 - 🧠 **Context Amnesia Shield (AST Diff)**: When modifying Python files, the `ReplaceBlock` tool compares the Abstract Syntax Tree (AST) before and after. If the LLM accidentally deletes over 30% or 2+ top-level functions (truncation hallucination), it instantly blocks the write and forces a fix.
 - 🔗 **Task Linearity Guard**: `TaskManager` enforces strict order. The agent cannot start Task 1.2 until Task 1.1 is fully completed.
-- ✅ **204 tests passing**
 
 ### v0.6.0
 - 🛡️ **Anti-Laziness AST Blockers**: Native AST checking explicitly intercepts `pass` blocks, empty classes, and lazy placeholder comments (like `// TODO`), forcing the LLM to write full implementations.

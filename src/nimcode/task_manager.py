@@ -93,6 +93,9 @@ class TaskManager:
     def get_task(self, task_id: str) -> Optional[Task]:
         return self.tasks.get(task_id)
 
+    def get_all_tasks(self) -> List[Dict]:
+        return [t.to_dict() for t in self.tasks.values()]
+
     def list_tasks(self) -> str:
         if not self.tasks:
             return "No tasks found."

@@ -6,8 +6,9 @@ from nimcode.agent import Agent
 
 @pytest.fixture
 def agent():
-    with patch("nimcode.agent.NimClient") as mock_client:
-        a = Agent(api_key="test_key")
+    with patch("nimcode.task_manager.TaskManager.get_all_tasks", return_value=[]):
+        with patch("nimcode.agent.NimClient") as mock_client:
+            a = Agent(api_key="test_key")
         # Ensure we have a mock for chat_one_shot and chat
         a.client.chat_one_shot = AsyncMock(return_value="I am done. TASK_COMPLETE")
         a.client.get_available_models = AsyncMock(return_value=["model1", "model2"])
@@ -16,7 +17,7 @@ def agent():
             yield "Hello"
             yield " World"
         a.client.chat = MagicMock(side_effect=lambda *args, **kwargs: mock_chat_generator(*args, **kwargs))
-        return a
+        yield a
 
 def test_save_load_history(agent):
     agent.messages = [{"role": "user", "content": "hello"}]
@@ -47,7 +48,8 @@ def test_load_history_error(agent):
                 mock_log.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_run_complete(agent):
+@patch("nimcode.task_manager.TaskManager.get_all_tasks", return_value=[])
+async def test_run_complete(mock_get_tasks, agent):
     agent.mcp = MagicMock()
     agent.mcp.connect_all = AsyncMock()
     
