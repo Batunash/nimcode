@@ -172,7 +172,19 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.4.0 (Latest)
+### v0.5.0 (Latest)
+- 🧠 **Autonomous Marathon Runner**: Capable of running non-stop for 5-6 hours without drifting from the main plan.
+- 🧪 **Native TestRunner**: NimCode can now run your test suites (`pytest`, `npm test`, `go test`) and self-heal its code until the tests pass.
+- 🗺️ **Semantic AST Explorer**: `GetCodeOutline` tool added for instant navigation within large files (functions/classes with line numbers) instead of reading thousands of lines.
+- 🛡️ **Stuck-Loop Breaker**: AI no longer gets stuck repeating the same failing action. Auto-detects 3x repeated errors and forces a strategy change.
+- 🧭 **Plan-Drift Radar**: Automatically pings the agent every 15 turns to ensure strict compliance with the `.nimcode/active_plan.txt` and prevents hallucinations.
+- 🚨 **Anti-Laziness Firewall**: Advanced regex intercepts lazy code (e.g., `// TODO`, `pass`) before it's written and forces the AI to output complete logic.
+- ✨ **Self-Correcting Auto-Linters**: Seamless multi-language support. Formats and validates code in the background using `go vet`, `prettier`, and `python` syntax checks.
+- 🧠 **Semantic Context RAG**: Automatically pins the directory tree and database schemas into the system prompt to cure agent amnesia.
+- 📝 **ReplaceBlock Tool**: Precision line-based editing replaces the buggy exact-string `Replace` tool, completely solving indentation mismatch errors.
+- ✅ **195 tests passing**
+
+### v0.4.0
 - 🐛 **System prompt is now OS-aware**: Correctly uses Windows (`mkdir`, `copy`) or Unix (`mkdir -p`, `cp`) commands based on the detected OS
 - 🐛 **Plan quality massively improved**: `/plan` mode now reads your actual documents (SDD, PRD, etc.) and generates concrete plans with real file paths and code — not generic PM templates
 - 🐛 **Fixed `_distill_memory` 400 error**: Context compaction no longer crashes with a Bad Request error
@@ -183,7 +195,6 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 - ⚙️ **Fully configurable**: `max_turns`, `max_tokens`, `max_retries`, retry delays all configurable via settings
 - ⚙️ **Dynamic model list**: Fetched from NIM API at runtime with fallback to known models
 - ⚙️ **Paginated file reading**: `Read` tool supports `offset`/`limit` for large files
-- ✅ **178 tests passing**
 
 ### v0.3.4
 - All timeouts configurable via settings (0 = infinite)
