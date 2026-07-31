@@ -444,17 +444,16 @@ class NimcodeREPL:
                         "   - Write the plan directly to '.nimcode/plans/<name_timestamp>.md'.\n"
                         "   - Use this strict technical structure: # Title, ## Context, ## Root Cause Analysis, ## Execution Plan (file-by-file with line numbers/snippets), ## Verification.\n"
                         "3. IF it is a 'From-Scratch / Major Architecture' task:\n"
-                        "   - Work AUTONOMOUSLY in a loop using your file-writing tools to generate a SINGLE, EXTREMELY DETAILED master plan file (e.g. '.nimcode/plans/<name>.md').\n"
-                        "   - Step A (Drafting): Write the initial outline to the file (High-level Phase names). Do NOT write code, pseudocode, or DB schemas.\n"
-                        "   - Step B (Iterative Expansion): Read the file, expand ONLY Phase 1 with extremely detailed 'Tasks', 'Acceptance Criteria', and 'Implementation Guidelines'. Overwrite the file with the updated content.\n"
-                        "   - Step C: Repeat Step B for Phase 2, Phase 3, etc., updating the same single file until all phases are fully detailed in Project Manager style.\n"
-                        "   - Step D: After all phases are detailed, overwrite '.nimcode/active_plan.txt' with the master plan's path.\n"
+                        "   - Generate a SINGLE, EXTREMELY DETAILED master plan file (e.g. '.nimcode/plans/<name>.md').\n"
+                        "   - The plan MUST be a MASSIVE document (at least 150-300 lines). Do not summarize. Do not be brief.\n"
+                        "   - Every feature must be broken down into specific files, exact DB schemas, class/function signatures, and step-by-step logic.\n"
+                        "   - Write the entire exhaustive plan into the file using your file-writing tools.\n"
                         "4. General Rules:\n"
                         "   - STRICT FIDELITY: You MUST absolutely respect the languages, frameworks, endpoints, tables, and features mentioned in the user's project files or SDD. Do NOT default to Python/Pytest if another language is specified. Do NOT omit database tables. Do NOT generalize specific endpoints into 'REST API'.\n"
                         "   - BUSINESS LOGIC: Do not ignore 'non-technical' sections like Monetization, ASO, or Affiliate integrations. They MUST be included as explicit tasks.\n"
                         "   - Quote real names, modules, and requirements. Do not invent generic projects.\n"
                         "   - NEVER output a generic software-lifecycle template (Phase1: MVP / Design / Development) unless instructed. Focus on code, DB schemas, and technical choices.\n"
-                        "   - After writing any plan file, overwrite '.nimcode/active_plan.txt' with the file's path."
+                        "   - After writing any plan file, ALWAYS overwrite '.nimcode/active_plan.txt' with the file's path."
                     )})
                     continue
                 elif user_input.strip().startswith("/teleport"):
