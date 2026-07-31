@@ -172,7 +172,18 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.5.5 (Latest)
+### v0.7.0 (Latest)
+- 🛡️ **Strict Markdown Validator**: `/plan` mode now physically blocks tasks that are under 150 characters or missing required Markdown headers (`Target Files`, `Implementation Details`, `Checklist`).
+- 🧠 **Context Amnesia Shield (AST Diff)**: When modifying Python files, the `ReplaceBlock` tool compares the Abstract Syntax Tree (AST) before and after. If the LLM accidentally deletes over 30% or 2+ top-level functions (truncation hallucination), it instantly blocks the write and forces a fix.
+- 🔗 **Task Linearity Guard**: `TaskManager` enforces strict order. The agent cannot start Task 1.2 until Task 1.1 is fully completed.
+- ✅ **204 tests passing**
+
+### v0.6.0
+- 🛡️ **Anti-Laziness AST Blockers**: Native AST checking explicitly intercepts `pass` blocks, empty classes, and lazy placeholder comments (like `// TODO`), forcing the LLM to write full implementations.
+- 🕵️ **Adversarial QA Gate**: Built a multi-agent validation layer (`qa_agent.py`) that strictly critiques the main agent's work. The main agent cannot complete tasks without receiving a `VERDICT: PASS` from the QA Agent.
+- 💾 **Task State Machine**: Replaced in-memory lists with `.nimcode/tasks.json` persistent storage via `TaskManager`, allowing robust restartability and task state tracking (`pending`, `in_progress`, `completed`).
+
+### v0.5.5
 - 🐛 **UI Bug Fix**: Fixed a visual bug where the CLI welcome banner hardcoded `NimCode v0.2.0` despite the user having updated to a newer version.
 
 ### v0.5.4
