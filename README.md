@@ -4,7 +4,7 @@
 
 **The Autonomous AI Coding Assistant for the NVIDIA NIM Ecosystem**
 
-[![PyPI version](https://badge.fury.io/py/nimcode.svg)](https://badge.fury.io/py/nimcode)
+[![PyPI version](https://img.shields.io/pypi/v/nimcode.svg)](https://pypi.org/project/nimcode/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 *A powerful, standalone REPL and CLI agent that writes, edits, and plans code like a senior developer—powered by LLaMa 3.1 70B (and other cutting-edge models) and the lightning-fast NVIDIA NIM API.*
