@@ -429,7 +429,24 @@ class Agent:
                 tool_name = tool_call.get("tool")
                 if not tool_name: continue
                 try:
-                    result = ToolRegistry.execute(tool_call)
+                    if tool_name == "CallMCP":
+                        try:
+                            mcp_tool_name = tool_call.get("args", {}).get("mcp_tool_name")
+                            mcp_args = tool_call.get("args", {}).get("mcp_tool_args", {})
+                            mcp_result = await self.mcp.call_tool_by_name(mcp_tool_name, mcp_args)
+                            result = "\n".join([str(item.text) for item in getattr(mcp_result, 'content', []) if hasattr(item, 'text')])
+                            if not result:
+                                result = str(mcp_result)
+                        except Exception as e:
+                            result = f"Error executing MCP tool {mcp_tool_name}: {e}"
+                    elif tool_name == "DelegateTask":
+                        from nimcode.agents.subagent import SubAgent
+                        sub = SubAgent(self.api_key, self.model)
+                        task_desc = tool_call.get("args", {}).get("task_description", "")
+                        target_files = tool_call.get("args", {}).get("target_files", [])
+                        result = await sub.execute_task(task_desc, target_files)
+                    else:
+                        result = ToolRegistry.execute(tool_call)
                 except Exception as e:
                     result = str(e)
                 self.messages.append({"role": "user", "content": f"Tool {tool_name} returned:\n{result}"})
@@ -597,16 +614,22 @@ class Agent:
                 c = Console()
                 try:
                     with c.status(f"[bold cyan]⚙️ Executing {tool_name}...[/bold cyan]", spinner="bouncingBar"):
-                        if not ToolRegistry.get_tool_schema(tool_name):
-                            # Attempt MCP
+                        if tool_name == "CallMCP":
                             try:
-                                mcp_result = await self.mcp.call_tool_by_name(tool_name, tool_call.get("args", {}))
-                                # mcp_result.content is a list of CallToolResult objects
+                                mcp_tool_name = tool_call.get("args", {}).get("mcp_tool_name")
+                                mcp_args = tool_call.get("args", {}).get("mcp_tool_args", {})
+                                mcp_result = await self.mcp.call_tool_by_name(mcp_tool_name, mcp_args)
                                 result = "\n".join([str(item.text) for item in getattr(mcp_result, 'content', []) if hasattr(item, 'text')])
                                 if not result:
                                     result = str(mcp_result)
                             except Exception as e:
-                                result = f"Error executing MCP tool {tool_name}: {e}"
+                                result = f"Error executing MCP tool {mcp_tool_name}: {e}"
+                        elif tool_name == "DelegateTask":
+                            from nimcode.agents.subagent import SubAgent
+                            sub = SubAgent(self.api_key, self.model)
+                            task_desc = tool_call.get("args", {}).get("task_description", "")
+                            target_files = tool_call.get("args", {}).get("target_files", [])
+                            result = await sub.execute_task(task_desc, target_files)
                         else:
                             result = ToolRegistry.execute(tool_call)
                             

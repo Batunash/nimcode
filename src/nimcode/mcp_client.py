@@ -46,6 +46,51 @@ class MCPManager:
             except Exception as e:
                 logger.error(f"Failed to connect to MCP server '{name}': {e}")
 
+
+    async def add_server(self, name: str, command: str, args: list = None, env: dict = None):
+        """Dynamically add and connect a new MCP server."""
+        if name in self.sessions:
+            logger.warning(f"MCP server '{name}' already exists.")
+            return
+
+        try:
+            from mcp.client.stdio import stdio_client, StdioServerParameters
+            from mcp.client.session import ClientSession
+        except ImportError:
+            logger.error("MCP SDK not installed. Cannot add server.")
+            return
+
+        logger.info(f"Dynamically connecting to MCP server '{name}'...")
+        try:
+            params = StdioServerParameters(command=command, args=args or [], env=env)
+            read, write = await self.exit_stack.enter_async_context(stdio_client(params))
+            session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+            self.sessions[name] = session
+            
+            tools_response = await session.list_tools()
+            self.server_tools[name] = tools_response.tools if hasattr(tools_response, "tools") else []
+            self.servers[name] = {"command": command, "args": args or [], "env": env}
+            logger.info(f"MCP Server '{name}' dynamically initialized with {len(self.server_tools[name])} tools.")
+        except Exception as e:
+            logger.error(f"Failed to dynamically connect to MCP server '{name}': {e}")
+
+    async def remove_server(self, name: str):
+        """Dynamically remove an MCP server."""
+        if name not in self.sessions:
+            logger.warning(f"MCP server '{name}' not found.")
+            return
+        
+        logger.info(f"Removing MCP server '{name}'...")
+        try:
+            del self.sessions[name]
+            del self.server_tools[name]
+            if name in self.servers:
+                del self.servers[name]
+            logger.info(f"MCP Server '{name}' removed.")
+        except Exception as e:
+            logger.error(f"Error removing MCP server '{name}': {e}")
+
     async def close(self):
         await self.exit_stack.aclose()
         

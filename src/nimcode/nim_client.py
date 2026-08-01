@@ -50,16 +50,33 @@ class NimClient:
             "max_tokens": 1024,
             "temperature": 0.2
         }
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers,
-                json=payload,
-                timeout=self.timeout
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
+        delay = self.retry_base_delay
+        for attempt in range(self.max_retries):
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=self.headers,
+                        json=payload,
+                        timeout=self.timeout
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < self.max_retries - 1:
+                        logger.warning(f"Rate limited (429) in chat_one_shot. Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                        delay *= 2
+                    else:
+                        raise
+                except Exception as e:
+                    if attempt < self.max_retries - 1:
+                        logger.warning(f"Error in chat_one_shot: {e}. Retrying in {delay}s...")
+                        await asyncio.sleep(delay)
+                        delay *= 2
+                    else:
+                        raise
 
     async def chat_vision(self, base64_image: str, prompt: str) -> str:
         # For vision, we might need a specific vision model, but we'll try with the default if it supports multimodal

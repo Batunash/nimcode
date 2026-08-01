@@ -188,6 +188,26 @@ class ToolRegistry:
                 },
                 "required": ["instructions"]
             },
+            "DelegateTask": {
+                "description": "Spawn a headless SubAgent in the background to solve a specific subtask. Useful for delegating work while you manage the big picture.",
+                "parameters": {
+                    "task_description": {"type": "string", "description": "A very specific, clear instruction for what the subagent should do."},
+                    "target_files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of files the subagent should focus on."
+                    }
+                },
+                "required": ["task_description", "target_files"]
+            },
+            "CallMCP": {
+                "description": "Call a tool provided by an external MCP server.",
+                "parameters": {
+                    "mcp_tool_name": {"type": "string", "description": "The exact name of the MCP tool to call."},
+                    "mcp_tool_args": {"type": "object", "description": "The arguments for the MCP tool.", "default": {}}
+                },
+                "required": ["mcp_tool_name"]
+            },
             "TestRunner": {
                 "description": "Run a test suite and capture the output to verify code correctness.",
                 "parameters": {
