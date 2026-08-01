@@ -28,6 +28,7 @@ MODEL_CONTEXT_WINDOWS = {
     "mistralai/mistral-large-2-instruct": 128000,
     # DeepSeek
     "deepseek-ai/deepseek-r1": 128000,
+    "deepseek-ai/deepseek-v4-pro": 128000,
     # Qwen
     "qwen/qwen2.5-72b-instruct": 128000,
     "qwen/qwq-32b": 128000,

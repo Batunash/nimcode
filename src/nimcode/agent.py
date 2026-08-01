@@ -277,7 +277,9 @@ class Agent:
         self.max_turns = max_turns if max_turns is not None else (0 if cfg_max_turns == 0 else cfg_max_turns)
         
         cfg_max_tokens = self.settings.get("max_tokens", 120000)
-        effective_max_tokens = max_tokens if max_tokens is not None else cfg_max_tokens
+        from .model_registry import get_context_window
+        model_limit = get_context_window(self.model)
+        effective_max_tokens = max_tokens if max_tokens is not None else min(cfg_max_tokens, model_limit)
         self.memory = MemoryManager(max_tokens=effective_max_tokens)
         
         self.permission_engine = PermissionEngine(mode=permission_mode)

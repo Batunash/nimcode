@@ -306,6 +306,8 @@ class ToolRegistry:
 
     @staticmethod
     def _check_lazy_code(content: str, file_path: str):
+        if file_path.lower().endswith(('.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.ini', '.toml')):
+            return
         import re
         # Broad regex for // TO DO, // TODO, # TODO, // FIXME, etc. with flexible spaces
         if re.search(r'(?i)(?://|#)\s*(?:to\s*do|fix\s*me)', content):
@@ -680,6 +682,8 @@ class ToolRegistry:
 
     @staticmethod
     def _check_dependency_hallucination(content: str, file_path: str, cwd: str):
+        if file_path.lower().endswith(('.md', '.txt', '.json', '.yaml', '.yml', '.csv', '.ini', '.toml')):
+            return
         import re
         pass
         import json
