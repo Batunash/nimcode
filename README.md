@@ -172,7 +172,7 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.8.5 (Latest)
+### v0.8.6 (Latest)
 - 🚀 **Default Model Bump**: Made `deepseek-ai/deepseek-v4-pro` the default model across the entire agent for superior reasoning and tool performance.
 
 ### v0.8.4
