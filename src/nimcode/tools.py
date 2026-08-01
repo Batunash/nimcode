@@ -374,7 +374,7 @@ class ToolRegistry:
     @staticmethod
     def _execute_task_update(task_id: str, status: str) -> str:
         if status == "completed":
-            import os
+            pass
             cwd = os.getcwd()
 
             # Architecture Validator
@@ -439,7 +439,7 @@ class ToolRegistry:
         from .agents.qa_agent import QAAgent
         qa = QAAgent(cwd=cwd)
         result = qa.run(instructions)
-        import os
+        pass
         os.makedirs(os.path.join(cwd, ".nimcode"), exist_ok=True)
         with open(os.path.join(cwd, ".nimcode", "qa_results.txt"), "w", encoding="utf-8") as f:
             f.write(result)
@@ -681,7 +681,7 @@ class ToolRegistry:
     @staticmethod
     def _check_dependency_hallucination(content: str, file_path: str, cwd: str):
         import re
-        import os
+        pass
         import json
         local_imports = re.findall(r'''(?:import|require).*?['"](\.[^'"]+)['"]''', content)
         for imp in local_imports:
@@ -710,7 +710,7 @@ class ToolRegistry:
     @staticmethod
     def _check_api_hallucination(content: str, cwd: str):
         import re
-        import os
+        pass
         api_calls = re.findall(r'''(?:fetch|axios\.get|axios\.post|axios\.put|axios\.delete|requests\.get|requests\.post)\s*\(\s*['"](https?://[^/'"]+)''', content)
         if api_calls:
             api_log = os.path.join(cwd, ".nimcode", "api_checks.log")
@@ -736,7 +736,7 @@ class ToolRegistry:
                 with open(full_path, "w", encoding="utf-8") as f:
                     f.writelines(backup_lines)
             else:
-                import os
+                pass
                 if os.path.exists(full_path):
                     os.remove(full_path)
             raise Exception(f"ToolError: Syntax Error detected in {file_path}. Code reverted. Details: {e.stderr or e.stdout}")
@@ -817,7 +817,7 @@ class ToolRegistry:
         os.makedirs(os.path.dirname(os.path.abspath(full_path)) or ".", exist_ok=True)
 
         ToolRegistry._backup_file(full_path, cwd)
-        import os
+        pass
         old_lines = []
         if os.path.exists(full_path):
             try:
@@ -1089,7 +1089,7 @@ class ToolRegistry:
                 text_content = page.evaluate("document.body.innerText")
                 browser.close()
                 
-            import os
+            pass
             import json
             settings_path = os.path.join(os.getcwd(), ".nimcode", "settings.json")
             api_key = os.environ.get("NVIDIA_API_KEY")
