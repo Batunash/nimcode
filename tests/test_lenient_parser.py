@@ -5,7 +5,7 @@ def test_extract_tool_calls_clean():
     text = "Here is my tool call:\n<tool_call>\n{\"tool\": \"Read\", \"args\": {}}\n</tool_call>\nAnd some prose."
     calls = LenientParser.extract_tool_calls(text)
     assert len(calls) == 1
-    assert calls[0] == "{\"tool\": \"Read\", \"args\": {}}"
+    assert calls[0] == ("", "{\"tool\": \"Read\", \"args\": {}}")
 
 def test_repair_truncated_json():
     # Test unclosed quote
@@ -19,19 +19,19 @@ def test_extract_tool_calls_unclosed():
     text = "Here is my tool call:\n<tool_call>\n{\"tool\": \"Read\"}"
     calls = LenientParser.extract_tool_calls(text)
     assert len(calls) == 1
-    assert calls[0] == "{\"tool\": \"Read\"}"
+    assert calls[0] == ("", "{\"tool\": \"Read\"}")
 
 def test_extract_tool_calls_markdown_wrapped():
     text = "<tool_call>\n```json\n{\"tool\": \"Read\"}\n```\n</tool_call>"
     calls = LenientParser.extract_tool_calls(text)
     assert len(calls) == 1
-    assert calls[0] == "{\"tool\": \"Read\"}"
+    assert calls[0] == ("", "{\"tool\": \"Read\"}")
 
 def test_extract_tool_calls_markdown_wrapped_no_lang():
     text = "<tool_call>\n```\n{\"tool\": \"Read\"}\n```\n</tool_call>"
     calls = LenientParser.extract_tool_calls(text)
     assert len(calls) == 1
-    assert calls[0] == "{\"tool\": \"Read\"}"
+    assert calls[0] == ("", "{\"tool\": \"Read\"}")
 
 def test_repair_trailing_comma():
     bad_json = '{"tool": "Read", "args": {"file": "a.txt",},}'
@@ -65,3 +65,18 @@ def test_process_model_response_raises_on_invalid():
     text = "<tool_call>\n{invalid}\n</tool_call>"
     with pytest.raises(ValueError, match="Malformed tool call JSON"):
         LenientParser.process_model_response(text)
+
+def test_extract_tool_calls_with_name_attr():
+    text = "Here is DeepSeek output:\n<tool_call name=\"Read\">\n{\"file_path\": \"a.txt\"}\n</tool_call>"
+    calls = LenientParser.extract_tool_calls(text)
+    assert len(calls) == 1
+    assert calls[0] == ("Read", "{\"file_path\": \"a.txt\"}")
+
+def test_process_model_response_deepseek_format():
+    text = "Thinking... <tool_call name=\"Write\">\n{\"file_path\": \"a.txt\", \"content\": \"hello\"}\n</tool_call>"
+    prose, calls = LenientParser.process_model_response(text)
+    assert prose == "Thinking..."
+    assert len(calls) == 1
+    assert calls[0]["tool"] == "Write"
+    assert calls[0]["args"]["file_path"] == "a.txt"
+    assert calls[0]["args"]["content"] == "hello"

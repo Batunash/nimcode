@@ -373,7 +373,7 @@ class Agent:
                         else:
                             display_text = parts[0]
                             
-                    tool_tag_idx = display_text.find("<tool_call>")
+                    tool_tag_idx = display_text.find("<tool_call")
                     if tool_tag_idx != -1:
                         display_text = display_text[:tool_tag_idx] + "\n\n*[dim]⚙️ Preparing tool execution...[/dim]*"
                         

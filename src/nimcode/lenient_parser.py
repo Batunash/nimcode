@@ -7,17 +7,22 @@ logger = logging.getLogger(__name__)
 
 class LenientParser:
     @staticmethod
-    def extract_tool_calls(text: str) -> List[str]:
-        """Extracts JSON strings from <tool_call> fenced blocks."""
-        # The model might forget the closing tag, or put markdown fences around it.
-        # We look for <tool_call> and extract everything until </tool_call> or EOF.
-        pattern = re.compile(r"<tool_call>\s*(.*?)(?:</tool_call>|\Z)", re.DOTALL | re.IGNORECASE)
+    def extract_tool_calls(text: str) -> List[Tuple[str, str]]:
+        """Extracts tool names and JSON strings from <tool_call> fenced blocks."""
+        # We look for <tool_call> or <tool_call name="..."> and extract everything until </tool_call> or EOF.
+        pattern = re.compile(r"<tool_call([^>]*)>\s*(.*?)(?:</tool_call>|\Z)", re.DOTALL | re.IGNORECASE)
         matches = pattern.findall(text)
         
         # Clean up markdown code blocks if the model wrapped the JSON in them
         cleaned_matches = []
-        for match in matches:
-            match = match.strip()
+        for attr_str, inner_text in matches:
+            # Parse name from attributes if it exists (e.g., name="Read")
+            name = ""
+            name_match = re.search(r'name=["\'](.*?)["\']', attr_str, re.IGNORECASE)
+            if name_match:
+                name = name_match.group(1).strip()
+
+            match = inner_text.strip()
             if match.startswith("```json"):
                 match = match[7:]
             elif match.startswith("```"):
@@ -26,7 +31,7 @@ class LenientParser:
             if match.endswith("```"):
                 match = match[:-3]
                 
-            cleaned_matches.append(match.strip())
+            cleaned_matches.append((name, match.strip()))
             
         return cleaned_matches
 
@@ -86,14 +91,19 @@ class LenientParser:
         Returns (plain_text_message, list_of_tool_calls).
         """
         # First, extract the tool calls
-        tool_call_strings = cls.extract_tool_calls(text)
+        tool_call_tuples = cls.extract_tool_calls(text)
         
         tool_calls = []
-        for tc_str in tool_call_strings:
+        for name, tc_str in tool_call_tuples:
             if not tc_str:
                 continue
             try:
-                tc = cls.parse_tool_call(tc_str)
+                tc_json = cls.parse_tool_call(tc_str)
+                # If model used <tool_call name="..."> and provided raw arguments in JSON
+                if isinstance(tc_json, dict) and "tool" not in tc_json and name:
+                    tc = {"tool": name, "args": tc_json}
+                else:
+                    tc = tc_json
                 tool_calls.append(tc)
             except ValueError:
                 # We could append an error message or raise. We'll raise to let the agent loop handle it and re-prompt.
@@ -101,7 +111,7 @@ class LenientParser:
                 
         # The plain text is whatever is not in the tool_call blocks.
         # We remove the tool call blocks from the original text to get the assistant's prose.
-        plain_text = re.sub(r"<tool_call>\s*(.*?)(?:</tool_call>|\Z)", "", text, flags=re.DOTALL | re.IGNORECASE)
+        plain_text = re.sub(r"<tool_call[^>]*>\s*(.*?)(?:</tool_call>|\Z)", "", text, flags=re.DOTALL | re.IGNORECASE)
         plain_text = plain_text.strip()
         
         return plain_text, tool_calls
