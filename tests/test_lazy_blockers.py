@@ -74,7 +74,7 @@ def test_strict_markdown_validator():
     assert "missing required markdown sections" in out
     
     # Valid
-    valid_desc = "x" * 150 + "Target Files\nImplementation Details\nChecklist"
+    valid_desc = "x" * 150 + "Target Files\nImplementation Details\nChecklist\nAcceptance Criteria\nTests"
     # Execute will try to create the task, which might succeed or say already exists, but won't raise ToolError
     out = ToolRegistry.execute({"tool": "TaskCreate", "args": {"task_id": "test_valid", "subject": "S", "description": valid_desc}}, cwd=".")
     assert "Validation Error" not in out
