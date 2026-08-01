@@ -172,7 +172,14 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.8.6 (Latest)
+### v0.9.0 (V2 Architecture Update)
+- 🌐 **Network Resilience**: Added Exponential Backoff mechanism for rate-limiting (429) errors in `nim_client.py`.
+- 🔄 **Self-Correcting Auto-Linter**: Integrated `cargo check` for Rust and `tsc --noEmit` for TypeScript into the agent's feedback loop to catch errors before assuming tasks are complete.
+- 🧠 **AST-Based Repo Map**: `repo_map.py` now extracts classes and functions from files via the `ast` module, optimizing the context window for large codebases.
+- 🤖 **Multi-Agent Swarm**: Introduced `SubAgent` class and `DelegateTask` tool, allowing the main agent to spin up background agents for subtasks.
+- 🔌 **Dynamic MCP Expansion**: `MCPManager` now supports adding and removing MCP servers at runtime without restarts, natively powered by the `CallMCP` tool for high reliability.
+
+### v0.8.6
 - 🚀 **Default Model Bump**: Made `deepseek-ai/deepseek-v4-pro` the default model across the entire agent for superior reasoning and tool performance.
 
 ### v0.8.4
