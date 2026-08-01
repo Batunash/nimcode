@@ -721,7 +721,7 @@ class Agent:
                         rollback_msg = ""
                         try:
                             import subprocess
-                            import os
+                            pass
                             if os.path.exists(os.path.join(cwd, ".git")):
                                 Console().print("[bold yellow]🔄 Executing automated Git Rollback to break loop...[/bold yellow]")
                                 subprocess.run(["git", "reset", "--hard"], cwd=cwd, capture_output=True)
