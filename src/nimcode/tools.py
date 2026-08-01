@@ -452,7 +452,7 @@ class ToolRegistry:
         # Bash Command Blacklist
         cmd_lower = command.lower()
         import re
-        if re.search(r'\b(rm\s+-r|rm\s+-rf|sudo|kill|killall|chmod\s+-r\s+777)\b', cmd_lower) or "cd .." in cmd_lower:
+        if re.search(r'\b(rm\s+-r|rm\s+-rf|sudo|kill|killall|chmod\s+-r\s+777|curl|wget)\b', cmd_lower) or "cd .." in cmd_lower:
             raise Exception("ToolError: Security Blocker: Your bash command contains a blacklisted, dangerous pattern (rm -rf, sudo, kill, or cd out of bounds). Command execution blocked.")
             
         from .config import load_settings
