@@ -470,6 +470,16 @@ class Agent:
             self.messages.append({"role": "user", "content": initial_prompt})
         
         cwd = os.getcwd()
+        
+        # Git Safeguard Stash
+        import subprocess
+        if os.path.exists(os.path.join(cwd, ".git")):
+            try:
+                subprocess.run(["git", "stash", "push", "-u", "-m", "nimcode_safeguard_before_run"], cwd=cwd, capture_output=True)
+                from rich.console import Console
+                Console().print("[dim]🔒 Local changes stashed as 'nimcode_safeguard_before_run'. Agent rollback is armed.[/dim]")
+            except:
+                pass
         turn = 0
         while self.max_turns == 0 or turn < self.max_turns:
             turn += 1
@@ -539,6 +549,17 @@ class Agent:
                     self.messages.append({
                         "role": "user",
                         "content": f"SYSTEM ERROR: You attempted to use TASK_COMPLETE, but you still have {len(incomplete)} unfinished tasks. You MUST use tools to complete all tasks before finishing. Please continue working."
+                    })
+                    continue
+                    
+                qa_log = os.path.join(cwd, ".nimcode", "qa_results.txt")
+                if not os.path.exists(qa_log):
+                    logger.warning("Agent attempted TASK_COMPLETE without running InvokeQA.")
+                    from rich.console import Console
+                    Console().print("[bold red]🚨 PHYSICAL BLOCK: Agent tried to exit without running InvokeQA. Forcing retry.[/bold red]")
+                    self.messages.append({
+                        "role": "user",
+                        "content": "SYSTEM ERROR: You attempted to use TASK_COMPLETE without running the `InvokeQA` tool. You MUST run InvokeQA to verify your work before exiting."
                     })
                     continue
                     
@@ -695,9 +716,23 @@ class Agent:
                     if self.tool_error_counts[error_hash] >= 3:
                         from rich.console import Console
                         Console().print("[bold red]🚨 STUCK-LOOP BREAKER TRIGGERED! Forcing agent to change strategy.[/bold red]")
+                        
+                        # Git Rollback Attempt
+                        rollback_msg = ""
+                        try:
+                            import subprocess
+                            import os
+                            if os.path.exists(os.path.join(cwd, ".git")):
+                                Console().print("[bold yellow]🔄 Executing automated Git Rollback to break loop...[/bold yellow]")
+                                subprocess.run(["git", "reset", "--hard"], cwd=cwd, capture_output=True)
+                                subprocess.run(["git", "clean", "-fd"], cwd=cwd, capture_output=True)
+                                rollback_msg = "\n\n🚨 GIT ROLLBACK EXECUTED: Your working directory has been reset to the last commit to break you out of this error loop. All broken code you wrote recently has been WIPED. Stop repeating the same mistake."
+                        except:
+                            pass
+
                         self.messages.append({
                             "role": "user", 
-                            "content": f"Tool {tool_name} returned:\n{result}\n\n🚨 SYSTEM OVERRIDE: You have triggered this exact error 3 times in a row! DO NOT repeat the same action. Use GetCodeOutline, Read, or grep to understand what is wrong, or ask the user for help."
+                            "content": f"Tool {tool_name} returned:\n{result}\n\n🚨 SYSTEM OVERRIDE: You have triggered this exact error 3 times in a row! DO NOT repeat the same action. Use GetCodeOutline, Read, or grep to understand what is wrong, or ask the user for help.{rollback_msg}"
                         })
                         self.tool_error_counts[error_hash] = 0
                     else:
@@ -713,9 +748,14 @@ class Agent:
 
             except Exception as e:
                 logger.error(f"Error parsing/executing tool: {e}")
+                err_str = str(e)
+                if "ToolError:" in err_str or "SecretScanner" in err_str or "Validation Error" in err_str:
+                    msg = f"Tool {tool_name if 'tool_name' in locals() else 'Unknown'} failed with error: {err_str}\n\n🚨 PHYSICAL BLOCKER: You MUST open a <think> block in your next response to analyze why this failed and how to recover before trying again."
+                else:
+                    msg = f"Your tool call was malformed or failed: {e}. Please fix the JSON syntax and try again."
                 self.messages.append({
                     "role": "user", 
-                    "content": f"Your tool call was malformed or failed: {e}. Please fix the JSON syntax and try again."
+                    "content": msg
                 })
         
         if turn >= self.max_turns:

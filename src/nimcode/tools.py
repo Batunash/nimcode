@@ -319,10 +319,14 @@ class ToolRegistry:
             raise ToolError("Validation Error: Lazy code detected ('... existing code' or similar). Do not skip code.")
             
         if re.search(r'(?i)(?:logic goes here|implement (?:this|the rest)|your code here|add your logic)', content):
-            raise ToolError("Validation Error: Lazy code detected ('logic goes here' or similar). Do not use placeholders.")
+            raise Exception("ToolError: Validation Error: Lazy code detected ('logic goes here' or similar). Do not use placeholders.")
             
         if re.search(r'(?i)(?://|#)\s*(?:unchanged|\.\.\.)', content) or re.search(r'(?m)^\s*\.\.\.\s*$', content):
-            raise ToolError("Validation Error: Lazy code detected (ellipsis placeholder '...' or 'unchanged'). You must provide the full implementation.")
+            raise Exception("ToolError: Validation Error: Lazy code detected (ellipsis placeholder '...' or 'unchanged'). You must provide the full implementation.")
+
+        # Mock Data Hunter
+        if re.search(r'(?i)(?:lorem\s*ipsum|dummy\s*data|mockuser|return\s+true\s*;\s*//\s*placeholder)', content):
+            raise Exception("ToolError: Validation Error: Mock data detected ('Lorem ipsum' or 'dummy data'). You must write the actual implementation with real data structures or database connections.")
         
         # Rust/Python stubs
         stub_patterns = ["todo!()", "unimplemented!()", "Insert code here", "pass\n", "PdfDocument::empty()", "return empty()"]
@@ -347,19 +351,79 @@ class ToolRegistry:
     @staticmethod
     def _execute_task_create(task_id: str, subject: str, description: str) -> str:
         if len(description) < 150:
-            raise ToolError("Validation Error: Task description is too short (under 150 characters). You must provide extremely detailed technical specs.")
+            raise Exception("ToolError: Validation Error: Task description is too short (under 150 characters). You must provide extremely detailed technical specs.")
         
         required_sections = ["Target Files", "Implementation Details", "Checklist"]
         missing = [sec for sec in required_sections if sec not in description]
         if missing:
-            raise ToolError(f"Validation Error: Task description is missing required markdown sections: {missing}. Follow the Strict Plan Format.")
+            raise Exception(f"ToolError: Validation Error: Task description is missing required markdown sections: {missing}. Follow the Strict Plan Format.")
             
+        desc_lower = description.lower()
+        if "acceptance criteria" not in desc_lower and "test" not in desc_lower and "step" not in desc_lower:
+            raise Exception("ToolError: Validation Error: Task description lacks quality. It MUST contain 'Acceptance Criteria', 'Test', or 'Step' definitions.")
+            
+        if task_id.endswith("-1") or task_id.endswith("1"):
+            lower_subj = subject.lower()
+            if "setup" not in lower_subj and "init" not in lower_subj and "scaffold" not in lower_subj and "create" not in lower_subj:
+                raise Exception("ToolError: Validation Error: Task 1 MUST be initializing the framework (scaffolding) using standard CLI tools (e.g. npx create-react-app).")
+                
         from .task_manager import TaskManager
         tm = TaskManager()
         return tm.create_task(task_id, subject, description)
 
     @staticmethod
     def _execute_task_update(task_id: str, status: str) -> str:
+        if status == "completed":
+            import os
+            cwd = os.getcwd()
+
+            # Architecture Validator
+            if task_id.endswith("-1") or task_id.endswith("1"):
+                if not any([os.path.exists(os.path.join(cwd, "package.json")), 
+                            os.path.exists(os.path.join(cwd, "requirements.txt")),
+                            os.path.exists(os.path.join(cwd, "Cargo.toml")),
+                            os.path.exists(os.path.join(cwd, "pyproject.toml")),
+                            os.path.exists(os.path.join(cwd, "go.mod"))]):
+                    raise Exception(f"ToolError: Architecture Validator failed. Task {task_id} is a setup task, but no standard project files (package.json, requirements.txt, etc.) were found. Create the project skeleton first.")
+
+            # Physical Blocker: Proof of Work & Coverage Enforcer
+            log_dir = os.path.join(cwd, ".nimcode", "tasks")
+            has_proof = False
+            has_coverage_failure = False
+            import re
+            
+            if os.path.exists(log_dir):
+                for f in os.listdir(log_dir):
+                    if f.endswith(".log"):
+                        try:
+                            with open(os.path.join(log_dir, f), "r", encoding="utf-8") as lf:
+                                content = lf.read()
+                                content_lower = content.lower()
+                                if "test" in content_lower or "jest" in content_lower or "pytest" in content_lower or "build" in content_lower:
+                                    has_proof = True
+                                    
+                                # Coverage Enforcer
+                                cov_match = re.search(r'Lines\s*:\s*(\d+\.?\d*)%', content)
+                                if not cov_match:
+                                    cov_match = re.search(r'All files\s*\|\s*(\d+\.?\d*)', content)
+                                if cov_match:
+                                    cov_percent = float(cov_match.group(1))
+                                    if cov_percent < 70.0:
+                                        has_coverage_failure = True
+                                        break
+                        except:
+                            pass
+            
+            qa_log = os.path.join(cwd, ".nimcode", "qa_results.txt")
+            if os.path.exists(qa_log):
+                has_proof = True
+                
+            if has_coverage_failure:
+                raise Exception(f"ToolError: Test Coverage Enforcer blocked completion. Test coverage is below 70%. Write more tests before closing this task.")
+                
+            if not has_proof:
+                raise Exception(f"ToolError: Cannot mark {task_id} as completed without proof of work. You must run tests via Bash tool first.")
+                
         from .task_manager import TaskManager
         tm = TaskManager()
         return tm.update_task_status(task_id, status)
@@ -374,12 +438,23 @@ class ToolRegistry:
     def _execute_invoke_qa(instructions: str, cwd: str) -> str:
         from .agents.qa_agent import QAAgent
         qa = QAAgent(cwd=cwd)
-        return qa.run(instructions)
+        result = qa.run(instructions)
+        import os
+        os.makedirs(os.path.join(cwd, ".nimcode"), exist_ok=True)
+        with open(os.path.join(cwd, ".nimcode", "qa_results.txt"), "w", encoding="utf-8") as f:
+            f.write(result)
+        return result
 
     _BACKGROUND_TASKS = {}
     
     @classmethod
     def _execute_bash(cls, command: str, cwd: str, background: bool = False) -> str:
+        # Bash Command Blacklist
+        cmd_lower = command.lower()
+        import re
+        if re.search(r'\b(rm\s+-r|rm\s+-rf|sudo|kill|killall|chmod\s+-r\s+777)\b', cmd_lower) or "cd .." in cmd_lower:
+            raise Exception("ToolError: Security Blocker: Your bash command contains a blacklisted, dangerous pattern (rm -rf, sudo, kill, or cd out of bounds). Command execution blocked.")
+            
         from .config import load_settings
         settings = load_settings()
         if settings.get("sandbox_mode", False):
@@ -602,28 +677,97 @@ class ToolRegistry:
             header += ")"
         return f"{header}\n{body}"
 
+
+    @staticmethod
+    def _check_dependency_hallucination(content: str, file_path: str, cwd: str):
+        import re
+        import os
+        import json
+        local_imports = re.findall(r'''(?:import|require).*?['"](\.[^'"]+)['"]''', content)
+        for imp in local_imports:
+            base_dir = os.path.dirname(os.path.join(cwd, file_path))
+            target_path = os.path.normpath(os.path.join(base_dir, imp))
+            if not any([os.path.exists(target_path), os.path.exists(target_path + ".js"), os.path.exists(target_path + ".ts"), os.path.exists(target_path + ".jsx"), os.path.exists(target_path + ".tsx"), os.path.exists(target_path + ".css")]):
+                raise Exception(f"ToolError: You are trying to import '{imp}' but this file does not exist. Create it first.")
+
+        # External Package Check
+        external_imports = re.findall(r'''(?:import|require).*?['"]([^.\/][^'"]+)['"]''', content)
+        if external_imports:
+            pkg_path = os.path.join(cwd, "package.json")
+            if os.path.exists(pkg_path):
+                try:
+                    with open(pkg_path, "r", encoding="utf-8") as f:
+                        pkg = json.load(f)
+                        deps = list(pkg.get("dependencies", {}).keys()) + list(pkg.get("devDependencies", {}).keys())
+                        builtins = ["fs", "path", "os", "http", "https", "crypto", "child_process", "events", "util", "stream", "buffer", "url", "assert"]
+                        for ext in external_imports:
+                            ext_base = ext.split("/")[0]
+                            if ext_base not in deps and ext_base not in builtins and not ext_base.startswith("node:"):
+                                raise Exception(f"ToolError: Missing Dependency Blocker: Package '{ext_base}' is imported but NOT found in package.json. You MUST install it first using the Bash tool (e.g. `npm install {ext_base}`).")
+                except Exception as e:
+                    if "ToolError" in str(e): raise e
+
+    @staticmethod
+    def _check_api_hallucination(content: str, cwd: str):
+        import re
+        import os
+        api_calls = re.findall(r'''(?:fetch|axios\.get|axios\.post|axios\.put|axios\.delete|requests\.get|requests\.post)\s*\(\s*['"](https?://[^/'"]+)''', content)
+        if api_calls:
+            api_log = os.path.join(cwd, ".nimcode", "api_checks.log")
+            checked_apis = ""
+            if os.path.exists(api_log):
+                with open(api_log, "r", encoding="utf-8") as f:
+                    checked_apis = f.read()
+            for api in api_calls:
+                if api not in checked_apis:
+                    raise Exception(f"ToolError: Network Check Enforcer: You are using the API endpoint '{api}' but you haven't tested it yet. Use the Bash tool to test it (e.g. `curl -I {api} >> .nimcode/api_checks.log`) before writing the code.")
+
+    @staticmethod
+    def _check_syntax(file_path: str, full_path: str, backup_lines: list):
+        import subprocess
+        try:
+            if file_path.endswith(".py"):
+                subprocess.run(["python", "-m", "py_compile", full_path], check=True, capture_output=True, text=True)
+            elif file_path.endswith(".js") or file_path.endswith(".jsx"):
+                # if node is not installed, it will raise FileNotFoundError which we ignore
+                subprocess.run(["node", "--check", full_path], check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            if backup_lines:
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.writelines(backup_lines)
+            else:
+                import os
+                if os.path.exists(full_path):
+                    os.remove(full_path)
+            raise Exception(f"ToolError: Syntax Error detected in {file_path}. Code reverted. Details: {e.stderr or e.stdout}")
+        except FileNotFoundError:
+            pass
+
     @staticmethod
     def _execute_write(file_path: str, content: str, cwd: str) -> str:
 
         # Physical Blocker for Lazy Code
         ToolRegistry._check_lazy_code(content, file_path)
 
+        # Dependency Hallucination Checker
+        ToolRegistry._check_dependency_hallucination(content, file_path, cwd)
+        ToolRegistry._check_api_hallucination(content, cwd)
+
         # Run Secret Scanner
         try:
             from .secret_scanner import SecretScanner
             findings = SecretScanner.scan(content)
             if findings:
-                raise ToolError(f"SecretScanner blocked write: {len(findings)} secrets detected ({', '.join(findings)})")
+                raise Exception(f"SecretScanner blocked write: {len(findings)} secrets detected ({', '.join(findings)})")
         except ImportError:
             pass
             
-        
         full_path = os.path.join(cwd, file_path)
         if os.path.exists(full_path):
             try:
                 with open(full_path, "r", encoding="utf-8") as f:
                     if len(f.readlines()) > 100:
-                        raise ToolError(f"Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
+                        raise Exception(f"ToolError: Validation Error: File {file_path} is too large (>100 lines) to overwrite completely. Use ReplaceBlock to edit specific lines and prevent Context Amnesia.")
             except:
                 pass
 
@@ -645,6 +789,9 @@ class ToolRegistry:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
             
+        # Syntax Check Blocker
+        ToolRegistry._check_syntax(file_path, full_path, old_lines)
+            
         diff_str = f"\nDiff:\n{diff}" if diff else ""
         return f"Successfully wrote to {file_path}.{diff_str}"
 
@@ -652,6 +799,10 @@ class ToolRegistry:
     def _execute_append(file_path: str, content: str, cwd: str) -> str:
         # Physical Blocker for Lazy Code
         ToolRegistry._check_lazy_code(content, file_path)
+
+        # Dependency Hallucination Checker
+        ToolRegistry._check_dependency_hallucination(content, file_path, cwd)
+        ToolRegistry._check_api_hallucination(content, cwd)
 
         # Run Secret Scanner
         try:
@@ -666,10 +817,22 @@ class ToolRegistry:
         os.makedirs(os.path.dirname(os.path.abspath(full_path)) or ".", exist_ok=True)
 
         ToolRegistry._backup_file(full_path, cwd)
+        import os
+        old_lines = []
+        if os.path.exists(full_path):
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    old_lines = f.readlines()
+            except:
+                pass
+
         with open(full_path, "a", encoding="utf-8") as f:
             if not content.startswith("\n"):
                 f.write("\n")
             f.write(content)
+            
+        # Syntax Check Blocker
+        ToolRegistry._check_syntax(file_path, full_path, old_lines)
             
         return f"Successfully appended to {file_path}."
 
@@ -711,6 +874,13 @@ class ToolRegistry:
             if old_str is None or new_str is None:
                 raise ToolError("Each replacement must contain 'old_string' and 'new_string'.")
                 
+            # Physical Blocker for Lazy Code
+            ToolRegistry._check_lazy_code(new_str, file_path)
+
+            # Dependency Hallucination Checker
+            ToolRegistry._check_dependency_hallucination(new_str, file_path, cwd)
+            ToolRegistry._check_api_hallucination(new_str, cwd)
+
             count = new_content.count(old_str)
             if count == 0:
                 raise ToolError(f"Target string not found in file (or already replaced). Ensure exact whitespace match:\n{old_str}")
@@ -720,6 +890,13 @@ class ToolRegistry:
             new_content = new_content.replace(old_str, new_str, 1)
             applied += 1
             
+
+        old_lines_count = len(content.splitlines())
+        new_lines_count = len(new_content.splitlines())
+        if old_lines_count > 0:
+            deleted_ratio = (old_lines_count - new_lines_count) / old_lines_count
+            if deleted_ratio > 0.3:
+                raise Exception(f"ToolError: Security Blocker: Massive Deletion Guard. You are deleting {deleted_ratio*100:.1f}% of the file. This looks like a hallucination. Use ReplaceBlock to target specific lines carefully.")
         import difflib
         old_lines = content.splitlines(keepends=True)
         new_lines = new_content.splitlines(keepends=True)
@@ -729,6 +906,9 @@ class ToolRegistry:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(new_content)
             
+        # Syntax Check Blocker
+        ToolRegistry._check_syntax(file_path, full_path, old_lines)
+            
         return f"Successfully applied {applied} replacements in {file_path}.\nDiff:\n{diff}"
 
     @staticmethod
@@ -737,6 +917,9 @@ class ToolRegistry:
         # Physical Blocker for Lazy Code
         ToolRegistry._check_lazy_code(replacement_content, file_path)
 
+        # Dependency Hallucination Checker
+        ToolRegistry._check_dependency_hallucination(replacement_content, file_path, cwd)
+        ToolRegistry._check_api_hallucination(replacement_content, cwd)
         
         full_path = os.path.join(cwd, file_path)
         if os.path.exists(full_path):
@@ -782,6 +965,9 @@ class ToolRegistry:
         ToolRegistry._backup_file(full_path, cwd)
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(new_content)
+            
+        # Syntax Check Blocker
+        ToolRegistry._check_syntax(file_path, full_path, lines)
             
         return f"Successfully replaced lines {start_line}-{end_line} in {file_path}.\nDiff:\n{diff}"
 
