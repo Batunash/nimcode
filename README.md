@@ -172,7 +172,10 @@ NimCode's behavior can be fully customized through `~/.nimcode/settings.json` (g
 
 ## 📋 Changelog
 
-### v0.8.4 (Latest)
+### v0.8.5 (Latest)
+- 🚀 **Default Model Bump**: Made `deepseek-ai/deepseek-v4-pro` the default model across the entire agent for superior reasoning and tool performance.
+
+### v0.8.4
 - 🧠 **Native DeepSeek XML Support**: Re-engineered the internal parser (`lenient_parser.py`) into a hybrid parser that seamlessly handles both strict JSON (`<tool_call>`) and fine-tuned XML formats (`<tool_call name=\"...\">`). DeepSeek V4 Pro, Mistral Large 2, and others now work flawlessly out of the box!
 - 🧪 **224 tests passing**
 
