@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 def load_settings() -> Dict[str, Any]:
     """Loads configuration from ~/.nimcode/settings.json and .nimcode/settings.json"""
     settings = {
-        "model": "meta/llama-3.3-70b-instruct",
+        "model": "deepseek-ai/deepseek-v4-pro",
         "api_base_url": "https://integrate.api.nvidia.com/v1",
         "mcp_servers": {},
         # Timeouts (0 = disabled/infinite)

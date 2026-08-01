@@ -188,7 +188,7 @@ class Agent:
     def __init__(self, api_key: str, model: str = None, max_turns: int = None, permission_mode: PermissionMode = PermissionMode.DEFAULT, max_tokens: int = None):
         # Load global settings
         self.settings = load_settings()
-        self.model = model or self.settings.get("model", "meta/llama-3.3-70b-instruct")
+        self.model = model or self.settings.get("model", "deepseek-ai/deepseek-v4-pro")
         api_base_url = self.settings.get("api_base_url", "https://integrate.api.nvidia.com/v1")
         self.client = NimClient(
             api_key=api_key, 

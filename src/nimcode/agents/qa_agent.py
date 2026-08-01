@@ -19,7 +19,7 @@ class QAAgent:
         import json
         settings_path = os.path.join(self.cwd, ".nimcode", "settings.json")
         api_key = os.environ.get("NVIDIA_API_KEY")
-        model = "meta/llama-3.3-70b-instruct"
+        model = "deepseek-ai/deepseek-v4-pro"
         if os.path.exists(settings_path):
             try:
                 with open(settings_path, "r") as f:

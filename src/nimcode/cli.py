@@ -101,7 +101,7 @@ def main():
     # Main CLI arguments
     parser.add_argument("prompt", nargs="?", default=None, help="The task you want NimCode to accomplish. If omitted, starts interactive REPL.")
     parser.add_argument("--api-key", "-k", default=None, help="NVIDIA NIM API Key. Can also be set via NIM_API_KEY environment variable.")
-    parser.add_argument("--model", "-m", default="meta/llama-3.3-70b-instruct", help="Model ID to use from NIM.")
+    parser.add_argument("--model", "-m", default="deepseek-ai/deepseek-v4-pro", help="Model ID to use from NIM.")
     parser.add_argument("--max-turns", "-t", type=int, default=None, help="Maximum number of turns the agent is allowed to run. If omitted, uses settings.json max_turns (default 200; 0 = unlimited).")
     parser.add_argument("--permission-mode", "-p", type=PermissionMode, choices=list(PermissionMode), default=PermissionMode.DEFAULT, help="Permission mode for mutating tools.")
     parser.add_argument("--resume", "-r", action="store_true", help="Resume from the last session stored in .nimcode/sessions/session.json.")
