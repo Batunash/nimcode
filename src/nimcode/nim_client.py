@@ -158,7 +158,10 @@ class NimClient:
                     except Exception:
                         text = "<unread stream>"
                     logger.error(f"API HTTP error: {e.response.status_code} - {text}")
-                    yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your API key if 401.]"
+                    if e.response.status_code == 429:
+                        yield f"\n\n[Error: Rate Limit Exceeded (429). The API rejected the request because of too many requests or exceeded quota. Please try again later, check your NIM credits, or switch to a different model.]"
+                    else:
+                        yield f"\n\n[Error: Model API returned {e.response.status_code}. Please check your API key if 401.]"
                     return
                     
                 delay = min(max_delay, base_delay * (2 ** attempt))
