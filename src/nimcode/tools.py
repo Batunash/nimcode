@@ -160,7 +160,7 @@ class ToolRegistry:
                 "required": ["file_path"]
             },
                         "TaskCreate": {
-                "description": "Create a new task in the task list.",
+                "description": "Create a new task in the task list. VERY IMPORTANT: The 'description' parameter MUST be >150 characters, MUST contain 'Target Files', 'Implementation Details', and 'Checklist' as exact substrings, and MUST contain 'Acceptance Criteria', 'Test', or 'Step' definitions.",
                 "parameters": {
                     "task_id": {"type": "string", "description": "Unique ID for the task (e.g. '1.1')"},
                     "subject": {"type": "string", "description": "Short title of the task."},
@@ -228,7 +228,8 @@ class ToolRegistry:
         if not tool_name:
             raise ValueError("Missing 'tool' key in tool call.")
             
-        args = tool_call.get("args", {})
+        args = tool_call.get("args") or tool_call.get("arguments", {})
+        tool_call["args"] = args
         if not isinstance(args, dict):
             raise ValueError("'args' must be a dictionary.")
             

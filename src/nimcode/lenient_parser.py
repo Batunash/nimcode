@@ -57,9 +57,11 @@ class LenientParser:
         if open_quotes % 2 != 0:
             repaired += '"'
             
-        # Count open brackets and braces to auto-close them
-        open_braces = repaired.count("{") - repaired.count("}")
-        open_brackets = repaired.count("[") - repaired.count("]")
+        # Count open brackets and braces to auto-close them, ignoring those inside strings
+        # We can remove all properly closed strings before counting
+        no_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', repaired)
+        open_braces = no_strings.count("{") - no_strings.count("}")
+        open_brackets = no_strings.count("[") - no_strings.count("]")
         
         if open_brackets > 0:
             repaired += "]" * open_brackets
@@ -86,13 +88,27 @@ class LenientParser:
                 
             fp = fp_match.group(1)
             content_key = "replacement_content" if tool_name == "ReplaceBlock" else "content"
-            pattern = r'"' + content_key + r'"\s*:\s*"(.*)"\s*\}?\s*\}?\s*$'
-            val_match = re.search(pattern, repaired, re.DOTALL)
+            content_start_idx = repaired.find(f'"{content_key}"')
+            if content_start_idx == -1:
+                return None
             
-            if not val_match:
+            # Find the colon after the key
+            colon_idx = repaired.find(':', content_start_idx + len(content_key) + 2)
+            if colon_idx == -1:
                 return None
                 
-            raw_content = val_match.group(1)
+            # Find the opening quote of the value
+            quote_idx = repaired.find('"', colon_idx)
+            if quote_idx == -1:
+                return None
+                
+            rest = repaired[quote_idx + 1:]
+            
+            # Strip trailing braces, brackets, whitespace, and the final quote
+            rest = rest.rstrip(' \t\n\r}]+')
+            if rest.endswith('"'):
+                rest = rest[:-1]
+            raw_content = rest
             raw_content = raw_content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
             
             if tool_name == "ReplaceBlock":
