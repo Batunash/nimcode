@@ -80,3 +80,26 @@ def test_process_model_response_deepseek_format():
     assert calls[0]["tool"] == "Write"
     assert calls[0]["args"]["file_path"] == "a.txt"
     assert calls[0]["args"]["content"] == "hello"
+
+def test_fallback_extracts_unescaped_quotes_write():
+    bad_json = '{"tool": "Write", "args": {"file_path": "a.txt", "content": "import react;\nconst a = "hello";\n"}}'
+    parsed = LenientParser.parse_tool_call(bad_json)
+    assert parsed["tool"] == "Write"
+    assert parsed["args"]["file_path"] == "a.txt"
+    assert parsed["args"]["content"] == 'import react;\nconst a = "hello";\n'
+
+def test_fallback_extracts_unescaped_quotes_append():
+    bad_json = '{"tool": "Append", "args": {"file_path": "a.txt", "content": "This is "quoted" text."}}'
+    parsed = LenientParser.parse_tool_call(bad_json)
+    assert parsed["tool"] == "Append"
+    assert parsed["args"]["file_path"] == "a.txt"
+    assert parsed["args"]["content"] == 'This is "quoted" text.'
+
+def test_fallback_extracts_unescaped_quotes_replace_block():
+    bad_json = '{"tool": "ReplaceBlock", "args": {"file_path": "a.txt", "start_line": 10, "end_line": 20, "replacement_content": "def foo():\n    return "bar""}}'
+    parsed = LenientParser.parse_tool_call(bad_json)
+    assert parsed["tool"] == "ReplaceBlock"
+    assert parsed["args"]["file_path"] == "a.txt"
+    assert parsed["args"]["start_line"] == 10
+    assert parsed["args"]["end_line"] == 20
+    assert parsed["args"]["replacement_content"] == 'def foo():\n    return "bar"'

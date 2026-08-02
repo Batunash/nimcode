@@ -631,7 +631,16 @@ class Agent:
                             target_files = tool_call.get("args", {}).get("target_files", [])
                             result = await sub.execute_task(task_desc, target_files)
                         else:
-                            result = ToolRegistry.execute(tool_call)
+                            if ToolRegistry.get_tool_schema(tool_name):
+                                result = ToolRegistry.execute(tool_call)
+                            else:
+                                try:
+                                    mcp_result = await self.mcp.call_tool_by_name(tool_name, tool_call.get("args", {}))
+                                    result = "\n".join([str(item.text) for item in getattr(mcp_result, 'content', []) if hasattr(item, 'text')])
+                                    if not result:
+                                        result = str(mcp_result)
+                                except Exception as e:
+                                    result = f"Error executing MCP tool {tool_name}: {e}"
                             
                         # Auto-Linting & Diff Printing
                         if tool_name in ["Write", "Edit", "Replace", "ReplaceBlock"] and "Error" not in result:

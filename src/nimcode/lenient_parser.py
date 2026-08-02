@@ -68,6 +68,59 @@ class LenientParser:
             
         return repaired
 
+    @staticmethod
+    def _extract_content_fallback(repaired: str) -> Optional[Dict[str, Any]]:
+        """Fallback regex extractor for Append, Write, and ReplaceBlock tools when JSON parser fails due to unescaped quotes."""
+        try:
+            tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', repaired)
+            if not tool_match:
+                return None
+            
+            tool_name = tool_match.group(1)
+            if tool_name not in ["Append", "Write", "ReplaceBlock"]:
+                return None
+                
+            fp_match = re.search(r'"file_path"\s*:\s*"([^"]+)"', repaired)
+            if not fp_match:
+                return None
+                
+            fp = fp_match.group(1)
+            content_key = "replacement_content" if tool_name == "ReplaceBlock" else "content"
+            pattern = r'"' + content_key + r'"\s*:\s*"(.*)"\s*\}?\s*\}?\s*$'
+            val_match = re.search(pattern, repaired, re.DOTALL)
+            
+            if not val_match:
+                return None
+                
+            raw_content = val_match.group(1)
+            raw_content = raw_content.replace('\\n', '\n').replace('\\r', '\r').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
+            
+            if tool_name == "ReplaceBlock":
+                sl_match = re.search(r'"start_line"\s*:\s*(\d+)', repaired)
+                el_match = re.search(r'"end_line"\s*:\s*(\d+)', repaired)
+                if sl_match and el_match:
+                    return {
+                        "tool": tool_name, 
+                        "args": {
+                            "file_path": fp, 
+                            "start_line": int(sl_match.group(1)), 
+                            "end_line": int(el_match.group(1)), 
+                            "replacement_content": raw_content
+                        }
+                    }
+                return None
+            else:
+                return {
+                    "tool": tool_name, 
+                    "args": {
+                        "file_path": fp, 
+                        "content": raw_content
+                    }
+                }
+        except Exception as e:
+            logger.debug(f"Fallback extraction failed: {e}")
+            return None
+
     @classmethod
     def parse_tool_call(cls, tool_call_text: str) -> Dict[str, Any]:
         """Parses a tool call string into a dictionary."""
@@ -81,6 +134,12 @@ class LenientParser:
         try:
             return json.loads(repaired)
         except json.JSONDecodeError as e:
+            # Fallback for unescaped quotes in Append/Write/ReplaceBlock
+            fallback_result = cls._extract_content_fallback(repaired)
+            if fallback_result:
+                return fallback_result
+                
+            
             logger.error(f"Failed to parse tool call even after repair: {repaired}")
             raise ValueError(f"Malformed tool call JSON: {e}") from e
 
